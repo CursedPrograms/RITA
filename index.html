@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RITA — Remote Interface for Total Autonomy</title>
+<meta name="description" content="RITA is a 3.5-inch ESP32 touch-screen remote for the DREAM Robotics fleet: every robot online, what each one says, and a button for everything it can do, through RIFT.">
+<meta name="color-scheme" content="dark">
+<meta property="og:title" content="RITA — Remote Interface for Total Autonomy">
+<meta property="og:description" content="RIFT in your hand: a 3.5-inch ESP32 touch-screen remote for the DREAM Robotics fleet.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="images/rita-icon.png">
+<link rel="icon" href="site/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="site/apple-touch-icon.png">
+<link rel="stylesheet" href="site/style.css">
+<script src="site/site.js" defer></script>
+</head>
+<body>
+
+<nav aria-label="Primary">
+  <div class="wrap">
+    <a class="brand" href="#top">RITA</a>
+    <ul>
+      <li><a href="#overview">Overview</a></li>
+      <li><a href="#hardware">Hardware</a></li>
+      <li><a href="#quickstart">Quick start</a></li>
+      <li><a href="https://github.com/CursedPrograms/RITA">GitHub</a></li>
+    </ul>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="wrap">
+    <div class="eyebrow">A DREAM Robotics Remote &middot; Handheld</div>
+    <h1>RITA</h1>
+    <p class="tagline">Remote Interface for Total Autonomy</p>
+    <p class="lede">RIFT in your hand. A 3.5&Prime; ESP32 touch screen that shows every robot in the fleet, what each one says about itself, and a button for everything it can do.</p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/CursedPrograms/RITA">View on GitHub</a>
+      <a class="btn" href="#quickstart">Quick start</a>
+      <a class="btn" href="https://ko-fi.com/cursedentertainment">Support on Ko-fi</a>
+    </div>
+    <div class="tags" aria-label="Technologies">
+      <span class="tag">C++</span>
+      <span class="tag">ESP32</span>
+      <span class="tag">LovyanGFX</span>
+      <span class="tag">Touch screen</span>
+      <span class="tag">MIT License</span>
+    </div>
+    <figure class="avatar">
+      <img src="images/rita-icon.png" alt="RITA's icon: a little screen with her red, amber and green light" width="512" height="512">
+      <figcaption>RITA &middot; icon</figcaption>
+    </figure>
+  </div>
+</header>
+
+<main>
+
+<section id="overview">
+  <div class="wrap">
+    <h2>Overview</h2>
+    <h3 class="title">The whole fleet, in your hand</h3>
+    <div class="grid cols-3">
+      <div class="card">
+        <span class="k">Fleet</span>
+        <h4>Who's online</h4>
+        <p>Every robot on the network, from RIFT's <code>/fleet</code> or the list of whoever hosts it. Busy robots are outlined in amber.</p>
+      </div>
+      <div class="card">
+        <span class="k">Ask</span>
+        <h4>What it says</h4>
+        <p>Tap a robot: its mode, whether it's moving, its music and its distances, straight from RIFT's relay.</p>
+      </div>
+      <div class="card">
+        <span class="k">Do</span>
+        <h4>A button for everything</h4>
+        <p>Music, lights, UV, photos, stop: green buttons go at once. Moving ones are amber and ask first.</p>
+      </div>
+      <div class="card">
+        <span class="k">Drive</span>
+        <h4>One second at a time</h4>
+        <p>After <em>&ldquo;Let RITA move NORA?&rdquo;</em> each tap is a 1&nbsp;s timed move, with a drive pad for robots that drive.</p>
+      </div>
+      <div class="card">
+        <span class="k">Safe</span>
+        <h4>The robots keep their stops</h4>
+        <p>Walls, tilt and NORA&rsquo;s lock still hold, and RIFT never passes on anything that unlocks a robot.</p>
+      </div>
+      <div class="card">
+        <span class="k">WiFi</span>
+        <h4>The fleet&rsquo;s ladder</h4>
+        <p>She joins the highest fleet network she can see and moves up when she can. Her light: green on RIFT, amber elsewhere, red with none.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="hardware">
+  <div class="wrap">
+    <h2>Hardware</h2>
+    <h3 class="title">What she's built from</h3>
+    <ol class="parts">
+      <li><span class="n">01</span> ESP32-3248S035R &ldquo;Cheap Yellow Display&rdquo; (3.5&Prime;, 480&times;320)</li>
+      <li><span class="n">02</span> ST7796 screen and XPT2046 resistive touch (on the board)</li>
+      <li><span class="n">03</span> RGB LED (on the board)</li>
+      <li><span class="n">04</span> A USB cable</li>
+    </ol>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Part</th><th>Pins</th></tr></thead>
+        <tbody>
+          <tr><td>Screen (HSPI)</td><td class="mono">SCLK 14, MOSI 13, MISO 12, DC 2, CS 15, backlight 27</td></tr>
+          <tr><td>Touch (same bus)</td><td class="mono">CS 33, IRQ 36</td></tr>
+          <tr><td>RGB LED (active low)</td><td class="mono">R 4, G 16, B 17</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="quickstart">
+  <div class="wrap">
+    <h2>Quick start</h2>
+    <h3 class="title">Get her talking to the fleet</h3>
+    <ol class="steps">
+      <li>Copy <code>scripts/esp32/secrets.example.h</code> to <code>secrets.h</code> and put in the fleet&rsquo;s WiFi passwords.</li>
+      <li>Run <code>flash.bat</code>, or flash <code>scripts/esp32/esp32.ino</code> as an <b>ESP32 Dev Module</b> with the <b>Huge APP</b> partition scheme (libraries: LovyanGFX, ArduinoJson).</li>
+      <li>On the first boot, tap each corner as it lights up. Hold the screen while she starts to calibrate again.</li>
+      <li>She finds the fleet by herself. Tap a robot.</li>
+    </ol>
+  </div>
+</section>
+
+<section id="related">
+  <div class="wrap">
+    <h2>DREAM Robotics</h2>
+    <h3 class="title">The rest of the family</h3>
+    <div class="related">
+      <a href="https://github.com/CursedPrograms/RIFT">RIFT</a>
+      <a href="https://github.com/CursedPrograms/NORA-Robot-v00">NORA-Robot-v00</a>
+      <a href="https://github.com/CursedPrograms/MILA-Robot-v00">MILA-Robot-v00</a>
+      <a href="https://github.com/CursedPrograms/WHIP-Robot-v00">WHIP-Robot-v00</a>
+      <a href="https://github.com/CursedPrograms/IDA-Robot-v00">IDA-Robot-v00</a>
+      <a href="https://github.com/CursedPrograms/KIDA-Robot-v00">KIDA-Robot-v00</a>
+      <a href="https://github.com/CursedPrograms/KIDA-Robot-v01">KIDA-Robot-v01</a>
+      <a href="https://github.com/CursedPrograms/ARM-Robot-v01">ARM-Robot-v01</a>
+      <a href="https://github.com/CursedPrograms/DREAM">DREAM</a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="links">
+      <a href="https://github.com/CursedPrograms/RITA">GitHub</a>
+      <a href="https://x.com/NorowaretaGemu">X: @NorowaretaGemu</a>
+      <a href="https://cursed-entertainment.itch.io/">itch.io</a>
+      <a href="https://ko-fi.com/cursedentertainment">Ko-fi</a>
+      <a href="https://github.com/CursedPrograms/RITA/blob/main/LICENSE">MIT License</a>
+    </div>
+
+    <div class="logos">
+      <a href="https://ko-fi.com/cursedentertainment">
+        <img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support Cursed Entertainment on Ko-fi" width="180" loading="lazy">
+      </a>
+      <a href="https://cursed-entertainment.itch.io/">
+        <img src="https://github.com/CursedPrograms/cursedentertainment/raw/main/images/logos/logo-wide-grey.png" alt="Cursed Entertainment" width="250" loading="lazy">
+      </a>
+    </div>
+
+    <div>&copy; Cursed Entertainment 2026</div>
+  </div>
+</footer>
+
+<!-- DREAM-ECOSYSTEM:START -->
+<section class="eco">
+  <div class="eco-title">The DREAM Robotics ecosystem</div>
+  <div><strong>Minds</strong> — <a href="https://github.com/CursedPrograms/DREAM">DREAM</a> companion · <a href="https://github.com/CursedPrograms/TINA">TINA</a> engineer · <a href="https://github.com/CursedPrograms/NINA">NINA</a> caretaker · <a href="https://github.com/CursedPrograms/RIFT">RIFT</a> fleet hub · <a href="https://github.com/CursedPrograms/LYCEA">LYCEA</a> training school</div>
+  <div><strong>Robots</strong> — <a href="https://github.com/CursedPrograms/NORA-Robot-v00">NORA</a> · <a href="https://github.com/CursedPrograms/MILA-Robot-v00">MILA</a> · <a href="https://github.com/CursedPrograms/WHIP-Robot-v00">WHIP</a> · <a href="https://github.com/CursedPrograms/KIDA-Robot-v00">KIDA-00</a> · <a href="https://github.com/CursedPrograms/KIDA-Robot-v01">KIDA-01</a> · <a href="https://github.com/CursedPrograms/IDA-Robot-v00">IDA</a> · <a href="https://github.com/CursedPrograms/ARM-Robot-v01">ARM</a></div>
+  <div><strong>Remotes</strong> — <a href="https://github.com/CursedPrograms/RITA">RITA</a> handheld remote</div>
+  <div><strong>Tools</strong> — <a href="https://github.com/CursedPrograms/CRUSH">CRUSH</a> compression · <a href="https://github.com/CursedPrograms/Image-Generator">Image-Generator</a> · <a href="https://github.com/CursedPrograms/GloriosaAI">GloriosaAI</a> · <a href="https://github.com/CursedPrograms/SynthWomb">SynthWomb</a> · <a href="https://github.com/CursedPrograms/PyVitals">PyVitals</a></div>
+</section>
+<!-- DREAM-ECOSYSTEM:END -->
+</body>
+</html>
