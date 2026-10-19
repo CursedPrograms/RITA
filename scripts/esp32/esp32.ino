@@ -64,7 +64,7 @@ const int W = 480, H = 320, BAR = 36;
 // ---------------------------------------------------------------------------
 const char* const LADDER[] = { FLEET_SSID, "DREAM", "NINA", "TINA",
                                "NORACTL", "WHIPCTL", "KIDA01CTL", "KIDA00CTL", "ARMCTL",
-                               "NORA", "WHIP", "KIDA01", "KIDA00", "ARM", "MILA" };   // the whole ladder: whoever hosts
+                               "NORA", "WHIP", "KIDA01", "KIDA00", "ARM", "MILA", "NIKA" };   // the whole ladder: whoever hosts
 const int LADDER_N = sizeof(LADDER) / sizeof(LADDER[0]);
 const unsigned long JOIN_MS      = 15000;   // per network
 const unsigned long LOOK_MS      = 60000;   // not on RIFT's: look for a higher one this often
