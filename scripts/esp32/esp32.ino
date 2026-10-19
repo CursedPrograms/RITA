@@ -12,7 +12,8 @@
             passes on anything that unlocks one.
 
   WIFI: the fleet's ladder, like the controllers. She joins the highest network she can see
-  (RIFT, DREAM, NINA, TINA, the controllers, NORA), looks again every minute while she isn't on
+  (RIFT, DREAM, NINA, TINA, the controllers, NORA, then the robots that host when
+  nobody above them is around), looks again every minute while she isn't on
   RIFT's, and starts over when hers goes quiet. She never hosts one. The hub is the network's
   host, at its gateway address on :5000; ask and do need RIFT (the others only list robots).
   She registers there as RITA (type "remote") every 10 s, so the fleet sees her too.
@@ -62,7 +63,8 @@ const int W = 480, H = 320, BAR = 36;
 // The fleet's WiFi ladder (highest first) and the hub
 // ---------------------------------------------------------------------------
 const char* const LADDER[] = { FLEET_SSID, "DREAM", "NINA", "TINA",
-                               "NORACTL", "WHIPCTL", "KIDA01CTL", "KIDA00CTL", "ARMCTL", "NORA" };
+                               "NORACTL", "WHIPCTL", "KIDA01CTL", "KIDA00CTL", "ARMCTL",
+                               "NORA", "WHIP", "KIDA01", "KIDA00", "ARM", "MILA" };   // the whole ladder: whoever hosts
 const int LADDER_N = sizeof(LADDER) / sizeof(LADDER[0]);
 const unsigned long JOIN_MS      = 15000;   // per network
 const unsigned long LOOK_MS      = 60000;   // not on RIFT's: look for a higher one this often
