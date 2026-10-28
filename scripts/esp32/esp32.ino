@@ -32,6 +32,7 @@
 #include <Preferences.h>
 #include <ArduinoJson.h>
 #include "display.h"
+#include "splash.h"   // her avatar for the boot screen (scripts/make_splash.py)
 
 #if __has_include("secrets.h")
 #include "secrets.h"
@@ -570,15 +571,19 @@ void setup() {
   lcd.setRotation(1);   // landscape, 480 x 320
   lcd.setBrightness(200);
   lcd.fillScreen(C_BG);
+  // boot screen: her avatar on the left (splash.h), her name on the right
+  const int px = 24, py = (H - SPLASH_SIZE) / 2, tx = px + SPLASH_SIZE + (W - px - SPLASH_SIZE) / 2;
+  lcd.drawJpg(SPLASH_JPG, sizeof(SPLASH_JPG), px, py);
   lcd.setFont(&fonts::Font4);
   lcd.setTextColor(C_ACCENT);
   lcd.setTextDatum(middle_center);
-  lcd.drawString("RITA", W / 2, H / 2 - 14);
+  lcd.drawString("RITA", tx, H / 2 - 26);
   lcd.setFont(&fonts::Font2);
   lcd.setTextColor(C_DIM);
-  lcd.drawString("Remote Interface for Total Autonomy", W / 2, H / 2 + 16);
+  lcd.drawString("Remote Interface", tx, H / 2 + 6);
+  lcd.drawString("for Total Autonomy", tx, H / 2 + 24);
   lcd.setTextDatum(top_left);
-  delay(1200);
+  delay(1800);   // long enough to see her
   int32_t x, y;
   calibrate(lcd.getTouch(&x, &y));   // held at boot: calibrate again
 
