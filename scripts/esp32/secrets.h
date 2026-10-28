@@ -9,3 +9,6 @@
 // Every other network on the ladder (DREAM, NINA, TINA, the controllers, NORA, WHIP himself...)
 // uses the fleet's fallback password, the same on every robot.
 #define NORA_PASSWORD   "mmvbkbak"
+
+// Every robot's PIN (its controller unlock and wheel lock): a safety catch, the same on every robot.
+#define ROBOT_PIN       "1234"

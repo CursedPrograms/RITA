@@ -45,10 +45,16 @@ RITA is a 3.5" touch screen that shows the DREAM Robotics fleet and talks to it 
 <summary><b>Overview</b></summary>
 
 ### What she does
-- [x] **Fleet**: every robot online, from RIFT's `/fleet` (or the `/robots` list of whoever hosts the network). Busy robots are outlined in amber.
-- [x] **Robot**: tap one to see what it says about itself (RIFT's *ask*: mode, moving, music, distances) and get a button for every action it has (RIFT's *do*). Harmless actions (music, lights, UV, stop, photo...) are green; moving ones are amber.
-- [x] **Moving asks first**: the first moving action on a robot asks *"Let RITA move NORA?"*. After a yes, each tap is a 1 s timed move (RIFT caps them at 3 s). A drive pad appears for robots that drive.
-- [x] **Safety stays with the robots**: their own stops (walls, tilt, NORA's lock) still hold, and RIFT never passes on anything that unlocks a robot.
+- [x] **Splash**: her TV-head avatar for 5 s at power-up.
+- [x] **Home**: every robot she drives, its round avatar with its name under it: WHIP, NORA, MILA, NIKA, KIDA-00, KIDA-01, IDA and ARM. The ones on the network have a green ring; the rest are dimmed.
+- [x] **A controller for each robot**: tap one and drive it, talking to the robot directly (its own web API, the one its PC controller uses). Hold a pad button to drive, let go and it stops. Each robot gets its own pad and buttons:
+  - **WHIP** (hexapod): W / A / S / D with curves, crab left / right, HELLO, DANCE, REST, AUTO.
+  - **NORA** (mecanum): A / D slide, diagonals slide, TURN L / R, AUTO, UV, music, her wheel lock.
+  - **MILA, NIKA, KIDA-00, KIDA-01** (tracks): **WASD** or **TANK**, switched at the top. The controls change, and so does the robot's own drive mode. The screen takes one finger at a time, so in TANK the tracks latch: tap the left track's FWD / STOP / BACK, then the right's, and each keeps going until you change it. LINK moves both together; the big STOP stops both.
+  - **IDA** (no WiFi): through NORA's IR link.
+  - **ARM** (no WiFi): driven from her PC over USB, so RITA just says so.
+- [x] **RIFT too**: from a controller, RIFT: ASK / DO shows what the robot says about itself through RIFT and everything RIFT can do with it, as 1 s timed moves that ask *"Let RITA move NORA?"* first.
+- [x] **Safety stays with the robots**: their own stops (walls, tilt, the wheel locks) still hold. Their PIN (`ROBOT_PIN` in `secrets.h`) signs RITA in as a controller; unlocking wheels is its own button (UNLOCK).
 - [x] **The fleet's WiFi ladder**: she joins the highest network she can see (RIFT, DREAM, NINA, TINA, the controllers, NORA), looks again every minute, and starts over when hers goes quiet. She registers with the hub as `RITA` (type `remote`).
 - [x] **LED**: green on RIFT's network, amber on another one (the list works, ask and do need RIFT), red with no network.
 
