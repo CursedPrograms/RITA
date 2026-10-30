@@ -48,7 +48,7 @@ RITA is a 3.5" touch screen that shows the DREAM Robotics fleet and talks to it 
 - [x] **Splash**: her TV-head avatar for 5 s at power-up.
 - [x] **Home**: every robot she drives, its round avatar with its name under it: WHIP, NORA, MILA, NIKA, KIDA-00, KIDA-01, IDA and ARM. The ones on the network have a green ring; the rest are dimmed.
 - [x] **A controller for each robot**: tap one and drive it, talking to the robot directly (its own web API, the one its PC controller uses). Hold a pad button to drive, let go and it stops. Each robot gets its own pad and buttons:
-  - **WHIP** (hexapod): W / A / S / D with curves, crab left / right, HELLO, DANCE, REST, AUTO.
+  - **WHIP** (hexapod): W / A / S / D with curves, crab left / right, HELLO, DANCE, REST, AUTO, CRAB - / + (his crab offset, a degree a press).
   - **NORA** (mecanum): A / D slide, diagonals slide, TURN L / R, AUTO, UV, music, her wheel lock.
   - **MILA, NIKA, KIDA-00, KIDA-01** (tracks): **WASD** or **TANK**, switched at the top. The controls change, and so does the robot's own drive mode. The screen takes one finger at a time, so in TANK the tracks latch: tap the left track's FWD / STOP / BACK, then the right's, and each keeps going until you change it. LINK moves both together; the big STOP stops both.
   - **IDA** (no WiFi): through NORA's IR link.

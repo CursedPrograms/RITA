@@ -341,6 +341,19 @@ int robotGet(const String& path, uint16_t timeout = 600) {
   http.end();
   return code;
 }
+// A GET whose answer we want: a whole number out of its JSON, -1 if it isn't there
+int robotGetInt(const String& path, const char* key, uint16_t timeout = 600) {
+  if (!curBase.length() || netState != NET_UP) return -1;
+  HTTPClient http;
+  http.begin(curBase + path);
+  http.setTimeout(timeout);
+  lastCode = http.GET();
+  const String body = lastCode == 200 ? http.getString() : "";
+  http.end();
+  const String find = String("\"") + key + "\":";
+  const int at = body.indexOf(find);
+  return at < 0 ? -1 : body.substring(at + find.length()).toInt();
+}
 int robotPost(const String& path, const String& json, uint16_t timeout = 600) {
   if (!curBase.length() || netState != NET_UP) return -1;
   HTTPClient http;
@@ -516,7 +529,8 @@ void padRelease() {
 }
 
 // The buttons beside the pad: each robot's own (id "x:<what>")
-const Extra EX_WHIP[]   = { {"HELLO", "hello"}, {"DANCE", "dance"}, {"REST", "rest"}, {"AUTO", "auto"}, {"MANUAL", "manual"} };
+const Extra EX_WHIP[]   = { {"HELLO", "hello"}, {"DANCE", "dance"}, {"REST", "rest"}, {"AUTO", "auto"}, {"MANUAL", "manual"},
+                            {"CRAB -", "crabin"}, {"CRAB +", "crabout"} };
 const Extra EX_NORA[]   = { {"AUTO", "auto"}, {"MANUAL", "manual"}, {"UV ON", "uvon"}, {"UV OFF", "uvoff"},
                             {"MUSIC", "music"}, {"NEXT", "next"}, {"UNLOCK", "unlock"}, {"LOCK", "lock"} };
 const Extra EX_TANK[]   = { {"AUTO", "auto"}, {"MANUAL", "manual"}, {"SPEED", "speed"}, {"CHIRP", "chirp"},
@@ -546,6 +560,11 @@ void ctlExtra(const String& x) {
     case K_WHIP:
       if (x == "auto") code = robotGet("/mode?m=obstacle");
       else if (x == "manual") code = robotGet("/mode?m=web");
+      else if (x == "crabin" || x == "crabout") {   // his crab offset (the slider on his web page), a degree a press
+        const int deg = robotGetInt(String("/gait?crabstep=") + (x == "crabin" ? "-1" : "1"), "crabBack");
+        say(deg < 0 ? String("WHIP has no crab offset") : "Crab offset " + String(deg) + " deg", deg < 0 ? C_WARN : C_OK);
+        return;   // the degrees are the answer, not "said no"
+      }
       else code = robotGet("/act?do=" + x);
       break;
     case K_NORA:
