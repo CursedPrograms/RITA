@@ -34,6 +34,7 @@
 */
 
 #include <WiFi.h>
+#include "fleet_beacon.h"
 #include <HTTPClient.h>
 #include <Preferences.h>
 #include <ArduinoJson.h>
@@ -559,9 +560,9 @@ void padRelease() {
 }
 
 // The buttons beside the pad: each robot's own (id "x:<what>")
-const Extra EX_WHIP[]   = { {"HELLO", "hello"}, {"DANCE", "dance"}, {"REST", "rest"}, {"AUTO", "auto"}, {"MANUAL", "manual"},
+const Extra EX_WHIP[]   = { {"HELLO", "hello"}, {"DANCE", "dance"}, {"REST", "rest"}, {"STAY", "stay"}, {"AUTO", "auto"}, {"MANUAL", "manual"},
                             {"CRAB -", "crabin"}, {"CRAB +", "crabout"} };
-const Extra EX_NORA[]   = { {"AUTO", "auto"}, {"MANUAL", "manual"}, {"UV ON", "uvon"}, {"UV OFF", "uvoff"},
+const Extra EX_NORA[]   = { {"STAY", "stay"}, {"AUTO", "auto"}, {"MANUAL", "manual"}, {"UV ON", "uvon"}, {"UV OFF", "uvoff"},
                             {"MUSIC", "music"}, {"NEXT", "next"}, {"UNLOCK", "unlock"}, {"LOCK", "lock"} };
 const Extra EX_TANK[]   = { {"AUTO", "auto"}, {"MANUAL", "manual"}, {"SPEED", "speed"}, {"CHIRP", "chirp"},
                             {"UNLOCK", "unlock"}, {"LOCK", "lock"} };
@@ -593,7 +594,8 @@ void ctlExtra(const String& x) {
   int code = -1;
   switch (k) {
     case K_WHIP:
-      if (x == "auto") code = robotGet("/mode?m=obstacle");
+      if (x == "stay") code = robotGet("/mode?m=stay");
+      else if (x == "auto") code = robotGet("/mode?m=obstacle");
       else if (x == "manual") code = robotGet("/mode?m=web");
       else if (x == "crabin" || x == "crabout") {   // his crab offset (the slider on his web page), a degree a press
         const int deg = robotGetInt(String("/gait?crabstep=") + (x == "crabin" ? "-1" : "1"), "crabBack");
@@ -603,7 +605,8 @@ void ctlExtra(const String& x) {
       else code = robotGet("/act?do=" + x);
       break;
     case K_NORA:
-      if (x == "auto") code = robotGet("/modeAuto");
+      if (x == "stay") code = robotGet("/modeStay");
+      else if (x == "auto") code = robotGet("/modeAuto");
       else if (x == "manual") code = robotGet("/modeManual");
       else if (x == "uvon") code = robotGet("/uvOn");
       else if (x == "uvoff") code = robotGet("/uvOff");
@@ -1171,6 +1174,7 @@ void setup() {
 
 void loop() {
   netLoop();
+  fleetBeaconLoop();
   touchLoop();
 
   // HOME and FLEET: who's on the network; RIFT's ROBOT screen: what it says. DRIVE talks to its
