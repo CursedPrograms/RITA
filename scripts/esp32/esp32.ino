@@ -295,6 +295,8 @@ enum Kind : uint8_t {
   K_KIDA01,   // Pi, :5004  POST /action {"command": joy_drive, left, right} (resent: 0.8 s), move_stop
   K_IDA,      // no WiFi: NORA's IR link, NORA's /ida?c=fw|bw|left|right|stop
   K_ARM,      // no WiFi: her USB port, from her PC
+  K_ARIA,     // drone, :5014  /status, /chirp?u=: to look and talk. Nothing here flies her: a resistive
+              //   screen has no sticks, and a slipped finger is a crash. She flies from her app or a gamepad
 };
 struct Robot { const char* name; const char* label; Kind kind; uint16_t port; };
 const Robot ROSTER[] = {
@@ -302,6 +304,7 @@ const Robot ROSTER[] = {
   { "MILA", "MILA", K_TANK, 5010 },     { "NIKA", "NIKA", K_TANK, 5013 },
   { "KIDA00", "KIDA-00", K_KIDA00, 5003 }, { "KIDA01", "KIDA-01", K_KIDA01, 5004 },
   { "IDA", "IDA", K_IDA, 5002 },        { "ARM", "ARM", K_ARM, 0 },
+  { "ARIA", "ARIA", K_ARIA, 5014 },
 };
 const int ROSTER_N = sizeof(ROSTER) / sizeof(ROSTER[0]);
 
@@ -353,6 +356,32 @@ int robotGetInt(const String& path, const char* key, uint16_t timeout = 600) {
   const String find = String("\"") + key + "\":";
   const int at = body.indexOf(find);
   return at < 0 ? -1 : body.substring(at + find.length()).toInt();
+}
+// A word out of a JSON answer: "key":"word" or "key":12.34, "" if it isn't there
+String jsonField(const String& body, const char* key) {
+  const String find = String("\"") + key + "\":";
+  int at = body.indexOf(find);
+  if (at < 0) return "";
+  at += find.length();
+  if (body[at] == '"') return body.substring(at + 1, body.indexOf('"', at + 1));
+  int end = at;
+  while (end < (int)body.length() && body[end] != ',' && body[end] != '}') end++;
+  return body.substring(at, end);
+}
+String ariaMode, ariaBattery, ariaNetwork;   // her last /status
+void ariaPoll() {
+  if (!curBase.length() || netState != NET_UP) return;
+  HTTPClient http;
+  http.begin(curBase + "/status");
+  http.setTimeout(500);
+  lastCode = http.GET();
+  const String body = lastCode == 200 ? http.getString() : "";
+  http.end();
+  const String mode = jsonField(body, "mode"), volts = jsonField(body, "battery_v"), net = jsonField(body, "network");
+  if (mode != ariaMode || volts != ariaBattery || net != ariaNetwork) dirty = true;
+  ariaMode = mode;
+  ariaBattery = volts;
+  ariaNetwork = net;
 }
 int robotPost(const String& path, const String& json, uint16_t timeout = 600) {
   if (!curBase.length() || netState != NET_UP) return -1;
@@ -486,6 +515,7 @@ void ctlLoop() {
   const unsigned long pollMs = k == K_TANK ? 400 : 1500;
   if (now - lastPoll > pollMs && k != K_IDA) {
     lastPoll = now;
+    if (k == K_ARIA) { ariaPoll(); return; }
     const int code = robotGet("/status", 500);
     if ((code > 0) != (lastCode > 0)) dirty = true;
     if (!heldPad.length() || code <= 0) lastCode = code;
@@ -554,6 +584,11 @@ const Extra* extrasOf(int r, int* n) {
 
 void ctlExtra(const String& x) {
   if (!curBase.length()) { say(String(ROSTER[cur].label) + " isn't on the network", C_WARN); return; }
+  if (ROSTER[cur].kind == K_ARIA) {   // a phrase: x is its number; she says no while she's flying
+    const int got = robotGet("/chirp?u=" + x);
+    say(got == 200 ? "ARIA: talking" : got == 409 ? "ARIA's flying" : "ARIA said no", got == 200 ? C_OK : C_WARN);
+    return;
+  }
   const Kind k = ROSTER[cur].kind;
   int code = -1;
   switch (k) {
@@ -823,9 +858,9 @@ void drawConfirm() {
   button(W - 220, H - 116, 140, 48, "NO", C_BAD, "no");
 }
 
-// HOME: the roster in a 4 x 2 grid, each robot's round avatar with its name under it. On the
+// HOME: the roster in a 5 x 2 grid, each robot's round avatar with its name under it. On the
 // network: a green ring; not: dimmed, a grey ring. (Online = in the fleet list.)
-const int GRID_COLS = 4, CELL_W = W / GRID_COLS, CELL_H = (H - BAR) / 2;
+const int GRID_COLS = 5, CELL_W = W / GRID_COLS, CELL_H = (H - BAR) / 2;
 void drawHome() {
   drawBar("RITA", false);
   for (int r = 0; r < ROSTER_N && r < GRID_COLS * 2; r++) {
@@ -876,6 +911,20 @@ void drawCtrl() {
     lcd.setTextColor(C_DIM);
     lcd.drawString("ARM has no WiFi: she's driven from her PC,", 14, BAR + 20);
     lcd.drawString("over her USB port (ARM-Robot-v01/scripts).", 14, BAR + 40);
+    return;
+  }
+
+  if (R.kind == K_ARIA) {
+    lcd.setFont(&fonts::Font2);
+    lcd.setTextColor(C_TEXT);
+    lcd.drawString("State:    " + (ariaMode.length() ? ariaMode : String("--")), 14, BAR + 14);
+    lcd.drawString("Battery:  " + (ariaBattery.length() ? ariaBattery + " V" : String("--")), 14, BAR + 36);
+    lcd.drawString("Network:  " + (ariaNetwork.length() ? ariaNetwork : String("--")), 14, BAR + 58);
+    lcd.setTextColor(C_DIM);
+    lcd.drawString("She flies from her app or a gamepad, not from here.", 14, BAR + 84);
+    static const char* const WORDS[] = { "HELLO", "HAPPY", "PLAY", "BYE" };
+    static const char* const IDS[] = { "x:0", "x:2", "x:5", "x:6" };
+    for (int i = 0; i < 4; i++) button(14 + i * 112, BAR + 116, 104, 60, WORDS[i], C_ACCENT, IDS[i]);
     return;
   }
 

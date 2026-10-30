@@ -12,7 +12,7 @@ from pathlib import Path
 
 from PIL import Image
 
-SIZE = 84                  # px, square: one circle in her 4 x 2 home grid
+SIZE = 84                  # px, square: one circle in her 5 x 2 home grid
 BG = (7, 9, 15)            # C_BG in esp32.ino
 QUALITY = 85
 
@@ -20,7 +20,7 @@ QUALITY = 85
 ROBOTS = [
     ("WHIP", "WHIP-Robot-v00"), ("NORA", "NORA-Robot-v00"), ("MILA", "MILA-Robot-v00"),
     ("NIKA", "NIKA-Robot-v00"), ("KIDA00", "KIDA-Robot-v00"), ("KIDA01", "KIDA-Robot-v01"),
-    ("IDA", "IDA-Robot-v00"), ("ARM", "ARM-Robot-v01"),
+    ("IDA", "IDA-Robot-v00"), ("ARM", "ARM-Robot-v01"), ("ARIA", "ARIA-Robot-v00"),
 ]
 
 here = Path(__file__).resolve().parent
@@ -44,6 +44,8 @@ parts = ["// avatars.h - the fleet's round avatars for RITA's home screen. Writt
 table = []
 total = 0
 for name, repo in ROBOTS:
+    if not (fleet / repo / "images" / "avatar_round.png").exists():   # no picture yet: a plain circle on her home screen
+        continue
     data = jpeg(fleet / repo / "images" / "avatar_round.png")
     total += len(data)
     rows = [", ".join(f"0x{b:02x}" for b in data[i:i + 16]) for i in range(0, len(data), 16)]
