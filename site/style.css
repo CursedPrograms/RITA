@@ -1,16 +1,16 @@
 /* DREAM Robotics site stylesheet. Colours come from colour_scheme.xml
    (regenerate the site after editing it); layout is shared by every robot. */
 :root {
-  --bg: #080A12;
-  --panel: #0E1120;
-  --border: #1D223F;
-  --accent: #D34859;
-  --accent2: #1A7BD9;
-  --green: #00ff88;
-  --text: #F2E9EA;
-  --sub: #A89497;
-  --glow: 211, 72, 89;
-  --glow2: 26, 123, 217;
+  --bg: #10151D;
+  --panel: #19212E;
+  --border: #2E3B4E;
+  --accent: #E0702A;
+  --accent2: #4FB0A5;
+  --green: #4FB0A5;
+  --text: #EFE9D2;
+  --sub: #B6B097;
+  --glow: 224, 112, 42;
+  --glow2: 79, 176, 165;
   --mono: ui-monospace, "Cascadia Code", Consolas, "SF Mono", Menlo, monospace;
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
@@ -32,7 +32,7 @@ code, pre, .mono { font-family: var(--mono); }
 /* nav */
 nav {
   position: sticky; top: 0; z-index: 10;
-  background: rgba(8, 10, 18, .85);
+  background: rgba(16, 21, 29, .85);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--border);
 }
@@ -82,7 +82,7 @@ h1 {
 .screens .shot { margin: 0; }
 .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
 .yes { color: var(--green); }
-.no { color: #6B575A; }
+.no { color: #7C7A68; }
 nav ul a.active { color: var(--accent); }
 .spaced { margin-top: 16px; }
 .shot.narrow { max-width: 320px; }
@@ -150,7 +150,7 @@ pre {
   background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
   padding: 16px 18px; overflow-x: auto; font-size: 13.5px; line-height: 1.6; margin: 0 0 16px;
 }
-pre .c { color: #6B575A; }
+pre .c { color: #7C7A68; }
 pre .p { color: var(--accent); user-select: none; }
 :not(pre) > code { background: var(--panel); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; font-size: .9em; }
 

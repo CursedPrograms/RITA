@@ -1,27 +1,29 @@
-<p align="center"><img src="images/avatar_round.png" width="200" alt="RITA: a girl with an old orange TV for a head"></p>
+<p align="center"><img src="images/avatar_round.png" width="160" alt="RITA"></p>
 
-[![Twitter: @NorowaretaGemu](https://img.shields.io/badge/X-@NorowaretaGemu-blue.svg?style=flat)](https://x.com/NorowaretaGemu)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-  
-<br>
+<h1 align="center">RITA</h1>
+<h3 align="center">Remote Interface for Total Autonomy</h3>
+<p align="center"><i>A DREAM Robotics Remote</i></p>
+
+<div align="center">
+
+[![Twitter: @NorowaretaGemu](https://img.shields.io/badge/X-@NorowaretaGemu-blue.svg?style=flat)](https://x.com/NorowaretaGemu) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+</div>
+
 <div align="center">
   <a href="https://ko-fi.com/cursedentertainment">
-    <img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="ko-fi" style="width: 20%;"/>
+    <img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="ko-fi" width="180"/>
   </a>
 </div>
+
 <div align="center">
   <img alt="C++" src="https://img.shields.io/badge/c++%20-%23323330.svg?&style=for-the-badge&logo=c%2B%2B&logoColor=white"/>
-</div>
-<div align="center">
   <img alt="Arduino" src="https://img.shields.io/badge/-Arduino-323330?style=for-the-badge&logo=arduino&logoColor=white"/>
   <img alt="ESP32" src="https://img.shields.io/badge/ESP32-%23323330.svg?&style=for-the-badge&logo=espressif&logoColor=white"/>
-</div>
-<div align="center">
   <img alt="Git" src="https://img.shields.io/badge/git%20-%23323330.svg?&style=for-the-badge&logo=git&logoColor=white"/>
 </div>
 
-# RITA
-## Remote Interface for Total Autonomy
+---
 
 - Type: Handheld remote (RIFT in your hand)
 
@@ -30,6 +32,7 @@ RITA is a 3.5" touch screen that shows the DREAM Robotics fleet and talks to it 
 ---
 
 ## Related Projects
+
 
 <table>
   <tr>
@@ -53,7 +56,7 @@ RITA is a 3.5" touch screen that shows the DREAM Robotics fleet and talks to it 
 
 ---
 
-## 📖 Overview
+## Overview
 
 <details open>
 <summary><b>Overview</b></summary>
@@ -104,7 +107,7 @@ RITA is a 3.5" touch screen that shows the DREAM Robotics fleet and talks to it 
 
 ---
 
-## ⚡ Technical Pinouts
+## Pinouts
 
 <details>
 <summary><b>ESP32-3248S035R</b></summary>
@@ -121,7 +124,8 @@ Negative colours? Flip `PANEL_INVERT` in `scripts/esp32/display.h`. Red and blue
 
 ---
 
-## How to Run:
+## How to Run
+
 <details open>
 <summary><b>View How to Run</b></summary>
 
@@ -133,16 +137,12 @@ Negative colours? Flip `PANEL_INVERT` in `scripts/esp32/display.h`. Red and blue
 
 ---
 
-<br>
+<div align="center">&copy; Cursed Entertainment 2026</div>
+
 <div align="center">
-&copy; Cursed Entertainment 2026
-</div>
-<br>
-<div align="center">
-<a href="https://cursed-entertainment.itch.io/" target="_blank">
-    <img src="https://github.com/CursedPrograms/cursedentertainment/raw/main/images/logos/logo-wide-grey.png"
-        alt="CursedEntertainment Logo" style="width:250px;">
-</a>
+  <a href="https://cursed-entertainment.itch.io/">
+    <img src="https://github.com/CursedPrograms/cursedentertainment/raw/main/images/logos/logo-wide-grey.png" alt="Cursed Entertainment" width="250"/>
+  </a>
 </div>
 
 ---

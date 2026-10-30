@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Colour scheme for RITA, sampled from images/rita_avatar.jpg.
+  Avatar palette: a burnt-orange shirt and TV set, a teal CRT glow, a cream wall, navy in the shadows.
+  Used by her GitHub Pages site and her screen (scripts/esp32/esp32.ino).
+
+  Format: one colour per line, written exactly as  name="..." value="#RRGGBB".
+-->
+<colour_scheme>
+  <colour name="background" value="#10151D"/>
+  <colour name="panel" value="#19212E"/>
+  <colour name="border" value="#2E3B4E"/>
+  <colour name="divider" value="#222C3B"/>
+  <colour name="text" value="#EFE9D2"/>
+  <colour name="text_sec" value="#B6B097"/>
+  <colour name="text_dim" value="#7C7A68"/>
+  <colour name="accent" value="#E0702A"/>
+  <colour name="accent_hover" value="#EE8F52"/>
+  <colour name="accent2" value="#4FB0A5"/>
+  <colour name="accent3" value="#CCC6A5"/>
+  <colour name="button_hover_bg" value="#2A1C14"/>
+  <colour name="danger_bg" value="#2A1113"/>
+</colour_scheme>

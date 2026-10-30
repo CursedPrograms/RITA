@@ -59,12 +59,12 @@ Preferences prefs;
 // Look
 // ---------------------------------------------------------------------------
 constexpr uint16_t rgb(uint8_t r, uint8_t g, uint8_t b) { return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3); }
-const uint16_t C_BG     = rgb(7, 9, 15);
-const uint16_t C_PANEL  = rgb(16, 22, 36);
-const uint16_t C_LINE   = rgb(44, 58, 88);
-const uint16_t C_TEXT   = rgb(215, 230, 255);
-const uint16_t C_DIM    = rgb(110, 128, 160);
-const uint16_t C_ACCENT = rgb(100, 150, 230);   // the fleet's blue
+const uint16_t C_BG     = rgb(16, 21, 29);
+const uint16_t C_PANEL  = rgb(25, 33, 46);
+const uint16_t C_LINE   = rgb(46, 59, 78);
+const uint16_t C_TEXT   = rgb(239, 233, 210);
+const uint16_t C_DIM    = rgb(124, 122, 104);
+const uint16_t C_ACCENT = rgb(224, 112, 42);   // her shirt and TV: colour_scheme.xml
 const uint16_t C_OK     = rgb(80, 210, 130);
 const uint16_t C_WARN   = rgb(240, 170, 60);
 const uint16_t C_BAD    = rgb(235, 80, 90);
