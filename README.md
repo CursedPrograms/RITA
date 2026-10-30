@@ -33,6 +33,8 @@ RITA is a 3.5" touch screen that shows the DREAM Robotics fleet and talks to it 
 
 **STAY CLOSE:** RITA sends the fleet's ESP-NOW beacon once she's on a fleet network, so robots can tell how near she is. Her STAY button on NORA's and WHIP's pages makes them keep near her, about a metre away. Tested in simulation only so far.
 
+**Colours:** `colour_scheme.xml` comes from her avatar: navy, cream, burnt orange and CRT teal, on her site and her screen.
+
 ## Related Projects
 
 
