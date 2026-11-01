@@ -459,6 +459,20 @@ void ctlStop() {
   }
 }
 
+// The STOP buttons: stopped in any mode. ctlStop() alone does nothing while a robot drives itself
+// (AUTO, FOLLOW, STAY: each ignores its plain stop, and still answers OK), so out of that first.
+void ctlHalt() {
+  switch (ROSTER[cur].kind) {
+    case K_WHIP: robotGet("/mode?m=web"); break;
+    case K_NORA: robotGet("/modeManual"); break;
+    case K_TANK: robotGet(tankUi ? "/mode?v=tank" : "/mode?v=wasd"); break;
+    case K_KIDA00: robotPost("/do", "{\"action\":\"stop\"}"); break;
+    case K_KIDA01: kida01("stop_anywhere"); break;
+    default: break;   // IDA's stop already leaves OBSTACLE
+  }
+  ctlStop();
+}
+
 // TANK: the tracks as latched now. MILA / NIKA take one track at a time (L_FWD...): a track
 // going to 0 stops both, then the other one starts again.
 void ctlTracks(int8_t oldL, int8_t oldR) {
@@ -563,7 +577,7 @@ void padRelease() {
 const Extra EX_WHIP[]   = { {"HELLO", "hello"}, {"DANCE", "dance"}, {"REST", "rest"}, {"STAY", "stay"}, {"AUTO", "auto"}, {"MANUAL", "manual"},
                             {"CRAB -", "crabin"}, {"CRAB +", "crabout"} };
 const Extra EX_NORA[]   = { {"STAY", "stay"}, {"AUTO", "auto"}, {"MANUAL", "manual"}, {"UV ON", "uvon"}, {"UV OFF", "uvoff"},
-                            {"MUSIC", "music"}, {"NEXT", "next"}, {"UNLOCK", "unlock"}, {"LOCK", "lock"} };
+                            {"MUSIC", "music"}, {"UNLOCK", "unlock"}, {"LOCK", "lock"} };   // 8 at most; next song: RIFT: ASK / DO
 const Extra EX_TANK[]   = { {"AUTO", "auto"}, {"MANUAL", "manual"}, {"SPEED", "speed"}, {"CHIRP", "chirp"},
                             {"UNLOCK", "unlock"}, {"LOCK", "lock"} };
 const Extra EX_KIDA00[] = { {"AUTO", "auto"}, {"MANUAL", "manual"}, {"PHOTO", "photo"}, {"MUSIC", "music"},
@@ -611,7 +625,6 @@ void ctlExtra(const String& x) {
       else if (x == "uvon") code = robotGet("/uvOn");
       else if (x == "uvoff") code = robotGet("/uvOff");
       else if (x == "music") code = robotGet("/muPlay");
-      else if (x == "next") code = robotGet("/muNext");
       else if (x == "unlock") code = robotGet("/motorlockOff?pw=" ROBOT_PIN);
       else if (x == "lock") code = robotGet("/motorlockOn");
       break;
@@ -619,7 +632,7 @@ void ctlExtra(const String& x) {
       if (x == "auto") code = robotGet("/mode?v=obstacle");
       else if (x == "manual") code = robotGet(tankUi ? "/mode?v=tank" : "/mode?v=wasd");
       else if (x == "speed") code = robotGet("/cmd?v=SPEEDCYCLE");
-      else if (x == "chirp") code = robotGet("/chirp");
+      else if (x == "chirp") code = robotGet("/chirp?u=0");   // a phrase is required: 0 is hello
       else if (x == "unlock") code = robotGet("/motorlockOff?pw=" ROBOT_PIN);
       else if (x == "lock") code = robotGet("/motorlockOn");
       break;
@@ -746,7 +759,11 @@ void drawBar(const String& title, bool back) {
   }
   String net;
   uint16_t c;
-  if (netState == NET_UP) { net = String(LADDER[rank]) + (hubIsRift ? " / RIFT" : " / list only"); c = rank == 0 ? C_OK : C_WARN; }
+  if (netState == NET_UP) {
+    net = String(LADDER[rank]);
+    if (rank > 0 || !hubIsRift) net = net + (hubIsRift ? " / RIFT" : " / list only");
+    c = rank == 0 ? C_OK : C_WARN;
+  }
   else if (netState == NET_JOINING) { net = String("joining ") + LADDER[tryRank]; c = C_DIM; }
   else { net = "looking for the fleet"; c = C_BAD; }
   lcd.setFont(&fonts::Font2);
@@ -804,10 +821,10 @@ void drawFleet() {
 void drawRobot() {
   drawBar(sel, true);
   // what it says about itself
-  lcd.fillRoundRect(4, BAR + 6, 228, 150, 8, C_PANEL);
+  lcd.fillRoundRect(4, BAR + 6, 228, 114, 8, C_PANEL);   // ends above the pad
   lcd.setFont(&fonts::Font2);
   int y = BAR + 12;
-  for (int i = 0; i < statusCount && y < BAR + 146; i++, y += 17) {
+  for (int i = 0; i < statusCount && y < BAR + 95; i++, y += 17) {
     lcd.setTextColor(C_TEXT);
     lcd.drawString(statusLines[i].substring(0, 34), 12, y);
   }
@@ -1046,7 +1063,7 @@ void tap(const String& id) {
     ctlEnter(r);
     if (ROSTER[r].kind != K_ARM && !curBase.length()) say(String(ROSTER[r].label) + " isn't on the network", C_WARN);
   }
-  else if (id == "stop") { trackL = trackR = 0; heldPad = ""; if (curBase.length()) ctlStop(); }
+  else if (id == "stop" || id == "t:stop") { trackL = trackR = 0; heldPad = ""; if (curBase.length()) ctlHalt(); }
   else if (id.startsWith("scheme:")) { if (curBase.length()) ctlScheme(id == "scheme:tank"); else tankUi = id == "scheme:tank"; }
   else if (id.startsWith("t:")) tankTap(id);
   else if (id.startsWith("x:")) ctlExtra(id.substring(2));

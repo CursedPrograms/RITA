@@ -141,6 +141,33 @@ Negative colours? Flip `PANEL_INVERT` in `scripts/esp32/display.h`. Red and blue
 
 ---
 
+## On the PC
+
+<details open>
+<summary><b>See her screens with no board</b></summary>
+
+`preview.bat` (or `preview.sh`) runs her real `esp32.ino` on the PC, drawn by the real LovyanGFX, with a pretend WiFi and a pretend fleet behind it. The window is her screen, the mouse is your finger and the console prints every web call she makes. `preview.bat --shots` writes these pictures to `images/screens`, and fails if holding a pad button doesn't drive, letting go doesn't stop, or a robot has more buttons than DRIVE shows.
+
+It needs g++ and SDL2 (Windows: MSYS2's mingw64), Pillow for the pictures, and the libraries `flash.bat` installs.
+
+<table>
+  <tr>
+    <td><img src="images/screens/02_home.png" width="400" alt="HOME"></td>
+    <td><img src="images/screens/03_whip.png" width="400" alt="WHIP's controller, W held"></td>
+  </tr>
+  <tr>
+    <td><img src="images/screens/04_nora.png" width="400" alt="NORA's controller"></td>
+    <td><img src="images/screens/06_mila_tank.png" width="400" alt="MILA in TANK, tracks latched"></td>
+  </tr>
+  <tr>
+    <td><img src="images/screens/08_rift_ask_do.png" width="400" alt="RIFT: ask and do"></td>
+    <td><img src="images/screens/09_let_rita_move.png" width="400" alt="Let RITA move NORA?"></td>
+  </tr>
+</table>
+</details>
+
+---
+
 <div align="center">&copy; Cursed Entertainment 2026</div>
 
 <div align="center">
