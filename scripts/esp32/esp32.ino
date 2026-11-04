@@ -17,10 +17,12 @@
     RIFT    from a controller: what the robot says about itself through RIFT (ask) and everything
             RIFT can do with it (do), as timed 1 s moves that ask "let RITA move it?" first.
 
-  WIFI: the fleet's ladder, like the controllers. She joins the highest network she can see
-  (RIFT, DREAM, NINA, TINA, the controllers, NORA, then the robots that host when
-  nobody above them is around), looks again every minute while she isn't on
-  RIFT's, and starts over when hers goes quiet. She never hosts one. The hub is the network's
+  WIFI: the fleet's ladder. Her rung is under the controllers and above NORA:
+    RIFT > DREAM > NINA > TINA > NORACTL > WHIPCTL > KIDA01CTL > KIDA00CTL > ARMCTL > RITA > NORA > WHIP ...
+  She joins the highest network above her she can see. With none, she hosts "RITA" herself
+  (192.168.4.1, channel 1, the fleet's fallback password, like every robot's own) with the fleet
+  list on :5000, so NORA, WHIP, the KIDAs, ARM, MILA and NIKA join her and find each other. Every
+  minute she looks again, and moves up (handing hers over) when a higher one is back. The hub is the network's
   host, at its gateway address on :5000; ask and do need RIFT (the others only list robots).
   She registers there as RITA (type "remote") every 10 s, so the fleet sees her too.
 
@@ -36,6 +38,9 @@
 #include <WiFi.h>
 #include "fleet_beacon.h"
 #include <HTTPClient.h>
+#include <WebServer.h>   // the fleet list on :5000 while she hosts
+#include "esp_wifi.h"
+#include "esp_netif.h"
 #include <Preferences.h>
 #include <ArduinoJson.h>
 #include "display.h"
@@ -43,6 +48,7 @@
 #include "avatars.h"  // the fleet's round avatars for HOME (scripts/make_avatars.py)
 #include "dream_mirror.h"   // DREAM's clips from the SD card and her voice: optional (sdcard/)
 #include "camera.h"         // the KIDAs' and DREAM's cameras (MJPEG, with their detections)
+#include "web_page.h"       // her own web page (scripts/esp32/web, embedded by scripts/make_web.py)
 #include <ArduinoOTA.h>     // new firmware over WiFi: flash.bat -Ota (no BOOT button)
 
 #if __has_include("secrets.h")
@@ -55,7 +61,7 @@
 // A robot's own button on DRIVE. Up here, before any function: Arduino puts its function
 // prototypes (extrasOf()'s returns one) in front of the first function in the file.
 struct Extra { const char* label; const char* id; };
-struct Stat { String v[4]; bool on = false; bool any = false; };   // a robot's STATS row: TEMP, HUMIDITY, DISTANCE, BATTERY
+struct Stat { String v[5]; bool on = false; bool any = false; };   // a robot's STATS row: TEMP, HUMIDITY, DISTANCE, BATTERY, WIFI
 
 LGFX lcd;
 Preferences prefs;
@@ -80,8 +86,8 @@ const int W = 480, H = 320, BAR = 36;
 // The fleet's WiFi ladder (highest first) and the hub
 // ---------------------------------------------------------------------------
 const char* const LADDER[] = { FLEET_SSID, "DREAM", "NINA", "TINA",
-                               "NORACTL", "WHIPCTL", "KIDA01CTL", "KIDA00CTL", "ARMCTL",
-                               "NORA", "WHIP", "KIDA01", "KIDA00", "ARM", "MILA", "NIKA" };   // the whole ladder: whoever hosts
+                               "NORACTL", "WHIPCTL", "KIDA01CTL", "KIDA00CTL", "ARMCTL" };   // above her, highest first
+const char* AP_SSID = "RITA";       // hers, when none of those is around: the robots below join it
 const int LADDER_N = sizeof(LADDER) / sizeof(LADDER[0]);
 const unsigned long JOIN_MS      = 15000;   // per network
 const unsigned long LOOK_MS      = 60000;   // not on RIFT's: look for a higher one this often
@@ -96,8 +102,56 @@ int tryRank = -1, rank = -1;          // the network being joined / joined (inde
 unsigned long tryStart = 0, lastLook = 0, lostSince = 0, lastRegister = 0;
 bool lookScan = false;                // the scan running is the once-a-minute look, not a start-over
 bool hubIsRift = false;               // the hub answers /fleet (RIFT): ask and do work
+bool hosting = false;                 // she's the network ("RITA") and its fleet list
 
 String hubUrl() { return String("http://") + WiFi.gatewayIP().toString() + ":" + HUB_PORT; }
+String netName() { return hosting ? String(AP_SSID) : rank >= 0 && rank < LADDER_N ? String(LADDER[rank]) : String(""); }
+
+// ---- while she hosts: the fleet list on :5000 (RIFT's wire format: /ping, /register, /robots) ----
+WebServer fleetServer(HUB_PORT);
+struct Reg { String name, type, ip, caps; unsigned long seen; };
+const int MAX_REG = 16;
+Reg regs[MAX_REG];
+int regCount = 0;
+const unsigned long REG_TTL_MS = 20000;   // a robot that stops checking in drops off, like on RIFT
+
+void regPrune() {
+  for (int i = 0; i < regCount;) {
+    if (millis() - regs[i].seen > REG_TTL_MS) regs[i] = regs[--regCount];
+    else i++;
+  }
+}
+void fleetRegister() {
+  const String name = fleetServer.arg("name");
+  if (!name.length()) { fleetServer.send(400, "text/plain", "missing name"); return; }
+  int i = 0;
+  while (i < regCount && regs[i].name != name) i++;
+  if (i == regCount) { if (regCount == MAX_REG) { fleetServer.send(503, "text/plain", "full"); return; } regCount++; }
+  regs[i] = { name, fleetServer.hasArg("type") ? fleetServer.arg("type") : String("unknown"),
+              fleetServer.client().remoteIP().toString(), fleetServer.arg("capabilities"), millis() };
+  fleetServer.send(200, "text/plain", "OK");
+}
+void fleetRobots() {
+  regPrune();
+  JsonDocument doc;
+  doc["authority"] = "RITA";
+  JsonArray list = doc["robots"].to<JsonArray>();
+  for (int i = 0; i < regCount; i++) {
+    JsonObject r = list.add<JsonObject>();
+    r["name"] = regs[i].name; r["ip"] = regs[i].ip; r["type"] = regs[i].type;
+    JsonArray caps = r["capabilities"].to<JsonArray>();
+    int a = 0;
+    while (a < (int)regs[i].caps.length()) {
+      int b = regs[i].caps.indexOf(',', a);
+      if (b < 0) b = regs[i].caps.length();
+      if (b > a) caps.add(regs[i].caps.substring(a, b));
+      a = b + 1;
+    }
+  }
+  String out;
+  serializeJson(doc, out);
+  fleetServer.send(200, "application/json", out);
+}
 
 // ---------------------------------------------------------------------------
 // What RITA knows
@@ -144,7 +198,7 @@ bool has(const String& a) {
 // ---------------------------------------------------------------------------
 // Screens and buttons
 // ---------------------------------------------------------------------------
-enum Screen { SCR_HOME, SCR_CTRL, SCR_FLEET, SCR_ROBOT, SCR_CONFIRM, SCR_STATS, SCR_STAT1 };
+enum Screen { SCR_HOME, SCR_CTRL, SCR_FLEET, SCR_ROBOT, SCR_CONFIRM, SCR_STATS, SCR_STAT1, SCR_QR };
 Screen screen = SCR_HOME;
 bool dirty = true;
 unsigned long lastRefresh = 0;
@@ -177,6 +231,13 @@ void say(const String& text, uint16_t color = C_TEXT, unsigned long ms = 2500) {
   dirty = true;
 }
 
+// The robots are he or she, never "it": WHIP and RIFT are he, everyone else she
+bool isHe(const String& name) { return name == "WHIP" || name == "RIFT"; }
+String heShe(const String& name) { return isHe(name) ? "he" : "she"; }
+String himHer(const String& name) { return isHe(name) ? "him" : "her"; }
+String hisHer(const String& name) { return isHe(name) ? "his" : "her"; }
+String HisHer(const String& name) { return isHe(name) ? "His" : "Her"; }
+
 // "turn_left" -> "TURN LEFT"
 String label(String a) {
   a.replace("_", " ");
@@ -187,16 +248,28 @@ String label(String a) {
 // ---------------------------------------------------------------------------
 // LED
 // ---------------------------------------------------------------------------
-void led(bool r, bool g, bool b) {   // active low
-  digitalWrite(PIN_LED_R, !r);
-  digitalWrite(PIN_LED_G, !g);
-  digitalWrite(PIN_LED_B, !b);
+// Her RGB LED (active low), in colour: PWM on fixed channels 1-3 (the screen's backlight has 7).
+// ledTick() decides what it shows, most important first:
+//   updating over WiFi       white, flashing
+//   driving a robot that doesn't answer   red, blinking
+//   on DREAM's screen        her: orange pulse talking, teal listening, violet thinking, dim blue asleep
+//   otherwise, the network   a slow breath: green on RIFT, amber on another, blue hosting, red none
+bool ledReady = false, otaRunning = false;
+void ledRgb(uint8_t r, uint8_t g, uint8_t b) {
+  if (!ledReady) {
+    ledcAttachChannel(PIN_LED_R, 5000, 8, 1);
+    ledcAttachChannel(PIN_LED_G, 5000, 8, 2);
+    ledcAttachChannel(PIN_LED_B, 5000, 8, 3);
+    ledReady = true;
+  }
+  ledcWrite(PIN_LED_R, 255 - r);
+  ledcWrite(PIN_LED_G, 255 - g);
+  ledcWrite(PIN_LED_B, 255 - b);
 }
-void showNetOnLed() {
-  if (netState != NET_UP) led(true, false, false);
-  else if (rank == 0) led(false, true, false);
-  else led(true, true, false);
-}
+void led(bool r, bool g, bool b) { ledRgb(r ? 255 : 0, g ? 255 : 0, b ? 255 : 0); }
+void showNetOnLed() {}   // ledTick() keeps it up to date now
+// 0..1, a smooth rise and fall every `periodMs`
+float breath(unsigned long periodMs) { return 0.5f - 0.5f * cosf(2 * PI * (millis() % periodMs) / (float)periodMs); }
 
 // ---------------------------------------------------------------------------
 // Talking to the hub
@@ -223,6 +296,7 @@ int hub(const String& path, JsonDocument& doc, const String& body = "") {
 }
 
 void registerWithHub() {
+  if (hosting) return;   // she's the hub
   HTTPClient http;
   http.begin(hubUrl() + "/register");
   http.setTimeout(2000);
@@ -232,6 +306,14 @@ void registerWithHub() {
 }
 
 void fetchFleet() {
+  if (hosting) {   // she is the list
+    regPrune();
+    hubIsRift = false;
+    botCount = 0;
+    for (int i = 0; i < regCount && botCount < MAX_BOTS; i++) bots[botCount++] = { regs[i].name, regs[i].type, regs[i].ip, false };
+    if (fleetPage * ROWS >= botCount) fleetPage = 0;
+    return;
+  }
   JsonDocument doc;
   int code = hub("/fleet", doc);   // RIFT: everyone, merged with NORA's list
   hubIsRift = code == 200;
@@ -324,7 +406,7 @@ String robotIp(int r) {
   if (ROSTER[r].kind == K_ARM) return "";
   String ip = ipOf(ROSTER[r].kind == K_IDA ? "NORA" : ROSTER[r].name);
   // on DREAM's own WiFi she's the network's host, so she may not be in her own list
-  if (!ip.length() && ROSTER[r].kind == K_DREAM && netState == NET_UP && rank >= 0 && !strcmp(LADDER[rank], "DREAM"))
+  if (!ip.length() && ROSTER[r].kind == K_DREAM && netState == NET_UP && !hosting && netName() == "DREAM")
     ip = WiFi.gatewayIP().toString();
   return ip;
 }
@@ -334,12 +416,13 @@ String robotIp(int r) {
 // the fields are recognised by name: whatever a robot reports, and anything it reports later, shows.
 // ---------------------------------------------------------------------------
 Stat stats[ROSTER_N];
-const char* const STAT_NAMES[4] = { "TEMP", "HUMIDITY", "DISTANCE", "BATTERY" };
+const char* const STAT_NAMES[5] = { "TEMP", "HUMID", "DIST", "BATTERY", "WIFI" };
 int statNext = 0, statSel = -1, statCount = 0, statPage = 0;
 unsigned long lastStat = 0;
 const int MAX_STAT_FIELDS = 48;
 String statKey[MAX_STAT_FIELDS], statVal[MAX_STAT_FIELDS];
 
+int hostedRssi(const String& ip);   // further down, with her hosting
 bool hasStats(int r) { return ROSTER[r].kind != K_ARM && ROSTER[r].kind != K_IDA; }
 String statusUrl(int r) {
   const String ip = robotIp(r);
@@ -349,6 +432,7 @@ String statusUrl(int r) {
 // Which of the four a field is (-1: none), from its name
 int statKind(String k) {
   k.toLowerCase();
+  if (k == "wifi_rssi" || k == "rssi" || k == "wifi_dbm" || k == "signal_dbm") return 4;   // its own WiFi signal
   if (k.indexOf("hum") >= 0) return 1;
   if (k.indexOf("temp") >= 0 && k.indexOf("temperament") < 0 && !k.endsWith("temper") && k.indexOf("templ") < 0) return 0;   // not her mood's "temper"
   if (k.indexOf("dist") >= 0 || k.indexOf("range") >= 0 || k.indexOf("sonar") >= 0 || k.indexOf("ultra") >= 0) return 2;
@@ -360,6 +444,7 @@ String statUnit(String k, int kind) {
   if (kind == 0) return "C";
   if (kind == 1) return "%";
   if (kind == 2) return k.indexOf("_mm") >= 0 ? "mm" : k.indexOf("cm") >= 0 ? "cm" : k.endsWith("_m") ? "m" : "";
+  if (kind == 4) return "dBm";
   if (kind == 3) return (k.indexOf("pct") >= 0 || k.indexOf("percent") >= 0) ? "%" : (k.endsWith("_v") || k.indexOf("volt") >= 0) ? "V" : "";
   return "";
 }
@@ -407,8 +492,28 @@ void statPoll(int r, bool keep) {
     }
     http.end();
   }
+  const int heard = hostedRssi(robotIp(r));   // hosting: her own measure beats what it says
+  if (heard) fresh.v[4] = String(heard) + " dBm";
   stats[r] = fresh;
 }
+// While she hosts: each robot's signal as her hotspot hears it (dBm), by its address; 0 = not on hers
+int hostedRssi(const String& ip) {
+  if (!hosting || !ip.length()) return 0;
+  wifi_sta_list_t list;
+  if (esp_wifi_ap_get_sta_list(&list) != ESP_OK || !list.num) return 0;
+  esp_netif_t* ap = esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
+  if (!ap) return 0;
+  esp_netif_pair_mac_ip_t pairs[ESP_WIFI_MAX_CONN_NUM];
+  for (int i = 0; i < list.num; i++) { memcpy(pairs[i].mac, list.sta[i].mac, 6); pairs[i].ip.addr = 0; }
+  if (esp_netif_dhcps_get_clients_by_mac(ap, list.num, pairs) != ESP_OK) return 0;
+  for (int i = 0; i < list.num; i++) {
+    char buf[16];
+    esp_ip4addr_ntoa(&pairs[i].ip, buf, sizeof(buf));
+    if (ip == buf) return list.sta[i].rssi;
+  }
+  return 0;
+}
+
 // On STATS: one robot per tick, so RITA never waits on the whole fleet
 void statsLoop() {
   if (millis() - lastStat < (screen == SCR_STAT1 ? 1500UL : 350UL)) return;
@@ -418,6 +523,67 @@ void statsLoop() {
     statNext = (statNext + 1) % ROSTER_N;
     if (hasStats(statNext)) { statPoll(statNext, false); return; }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Her own web page: http://rita.local or her IP (192.168.4.1 while she hosts), port 80. It shows
+// what's on her screen and what she's doing as it happens (/api/status, asked every second), her
+// network and the fleet with its sensors. Read-only: driving stays on her touchscreen.
+// ---------------------------------------------------------------------------
+WebServer web(80);
+unsigned long lastWebView = 0;            // the page asked lately: keep the fleet's stats fresh for it
+bool webUp = false;
+String screenName();
+String doingNow();
+String webUrl();
+
+String robotPage(int r) {
+  const String ip = robotIp(r);
+  if (!ip.length()) return "";
+  if (ROSTER[r].kind == K_DREAM) return "https://" + ip + ":5009/";
+  return "http://" + ip + ":" + String(ROSTER[r].port) + "/";
+}
+
+void webStatus() {
+  lastWebView = millis();
+  JsonDocument d;
+  d["name"] = "RITA";
+  d["screen"] = screenName();
+  d["doing"] = doingNow();
+  d["toast"] = toast.length() && millis() <= toastUntil ? toast : String("");
+  d["hosting"] = hosting;
+  d["rift"] = hubIsRift;
+  d["net"] = netState == NET_UP ? netName() : String("");
+  d["ip"] = hosting ? String("192.168.4.1") : WiFi.localIP().toString();
+  d["uptime_s"] = millis() / 1000;
+  d["heap"] = ESP.getFreeHeap();
+  d["sd"] = mirror::card;
+  d["sound"] = mirror::sound;
+  JsonArray rs = d["robots"].to<JsonArray>();
+  for (int r = 0; r < ROSTER_N; r++) {
+    JsonObject o = rs.add<JsonObject>();
+    o["name"] = ROSTER[r].name;
+    o["label"] = ROSTER[r].label;
+    o["ip"] = robotIp(r);
+    o["page"] = robotPage(r);
+    o["answered"] = stats[r].on;
+    o["temp"] = stats[r].v[0]; o["hum"] = stats[r].v[1]; o["dist"] = stats[r].v[2]; o["batt"] = stats[r].v[3]; o["wifi"] = stats[r].v[4];
+  }
+  JsonArray hs = d["hosted"].to<JsonArray>();
+  if (hosting) for (int i = 0; i < regCount; i++) { JsonObject h = hs.add<JsonObject>(); h["name"] = regs[i].name; h["type"] = regs[i].type; h["ip"] = regs[i].ip; }
+  String out;
+  serializeJson(d, out);
+  web.send(200, "application/json", out);
+}
+
+void webBegin() {
+  web.on("/", []() { web.send_P(200, "text/html", WEB_INDEX); });
+  web.on("/style.css", []() { web.send_P(200, "text/css", WEB_STYLE); });
+  web.on("/app.js", []() { web.send_P(200, "application/javascript", WEB_APP); });
+  web.on("/avatar.jpg", []() { web.send_P(200, "image/jpeg", (const char*)SPLASH_JPG, sizeof(SPLASH_JPG)); });
+  web.on("/api/status", webStatus);
+  web.begin();
+  webUp = true;
 }
 
 bool tracked(int r) { return ROSTER[r].kind == K_TANK || ROSTER[r].kind == K_KIDA00 || ROSTER[r].kind == K_KIDA01; }
@@ -438,6 +604,11 @@ float heldF = 0, heldS = 0, heldT = 0;   // ... as forward, sideways (+ left), t
 unsigned long lastBeat = 0, lastPoll = 0;
 int lastCode = 0;                  // the robot's last answer (HTTP code; <= 0: none)
 bool camView = false;              // CAM: its camera on the screen (KIDA-00, KIDA-01, DREAM)
+int servoAngle = 90;               // KIDA-00's camera servo, 0-180 (her /status camera_servo.angle)
+bool servoHeld = false;            // a finger on its slider
+int servoSent = -1;                // the angle last sent
+unsigned long servoSentAt = 0;
+struct Slider { int x, y, w, h; } servoSlider = { 0, 0, 0, 0 };
 int camIdx = 0;                    // KIDA-01: cam 0 (ahead, YOLO) or cam 1
 bool hasCam(int r) { const Kind k = ROSTER[r].kind; return k == K_KIDA00 || k == K_KIDA01 || k == K_DREAM; }
 String camUrl() {
@@ -673,6 +844,22 @@ void ctlLoop() {
     lastPoll = now;
     if (k == K_ARIA) { ariaPoll(); return; }
     if (k == K_DREAM) { dreamPoll(); return; }
+    if (k == K_KIDA00) {   // her /status, for the camera servo's angle too
+      HTTPClient http;
+      http.begin(curBase + "/status");
+      http.setTimeout(500);
+      const int code = http.GET();
+      const String body = code == 200 ? http.getString() : "";
+      http.end();
+      if ((code > 0) != (lastCode > 0)) dirty = true;
+      if (!heldPad.length() || code <= 0) lastCode = code;
+      const int at = body.indexOf("\"camera_servo\"");
+      if (at >= 0 && !servoHeld && millis() - servoSentAt > 1500) {
+        const String a = jsonField(body.substring(at), "angle");
+        if (a.length() && a.toInt() != servoAngle) { servoAngle = a.toInt(); servoSent = servoAngle; dirty = true; }
+      }
+      return;
+    }
     const int code = robotGet("/status", 500);
     if ((code > 0) != (lastCode > 0)) dirty = true;
     if (!heldPad.length() || code <= 0) lastCode = code;
@@ -807,6 +994,38 @@ void ctlExtra(const String& x) {
 // ---------------------------------------------------------------------------
 // WiFi: the ladder
 // ---------------------------------------------------------------------------
+void startHost() {
+  WiFi.disconnect();
+  WiFi.mode(WIFI_AP_STA);                  // the station half keeps looking for a higher network
+  WiFi.softAPConfig(IPAddress(192, 168, 4, 1), IPAddress(192, 168, 4, 1), IPAddress(255, 255, 255, 0));
+  WiFi.softAP(AP_SSID, NORA_PASSWORD, 1, 0, 10);   // the fleet's fallback password, channel 1 like the robots', up to 10
+  static bool routes = false;
+  if (!routes) {
+    fleetServer.on("/ping", []() { fleetServer.send(200, "text/plain", "RITA alive"); });
+    fleetServer.on("/register", HTTP_POST, fleetRegister);
+    fleetServer.on("/robots", fleetRobots);
+    routes = true;
+  }
+  fleetServer.begin();
+  hosting = true;
+  regCount = 0;
+  netState = NET_UP;
+  rank = LADDER_N;                         // below everything she can join: any of them is higher
+  lastLook = millis();
+  lastRefresh = 0;
+  hubIsRift = false;
+  say("No fleet network: hosting RITA", C_WARN, 3000);
+  showNetOnLed();
+}
+void stopHost() {
+  if (!hosting) return;
+  fleetServer.stop();
+  WiFi.softAPdisconnect(true);
+  WiFi.mode(WIFI_STA);
+  hosting = false;
+  regCount = 0;
+}
+
 void startScan(bool look) {
   lookScan = look;
   WiFi.scanNetworks(true);   // async
@@ -823,7 +1042,7 @@ void joinNext() {
     say(String("Joining ") + LADDER[r], C_DIM, JOIN_MS);
     return;
   }
-  startScan(false);   // nothing (left) to join: look again
+  startHost();   // nothing (left) to join: she's the network now, and keeps looking every minute
 }
 
 void netLoop() {
@@ -840,12 +1059,12 @@ void netLoop() {
     WiFi.scanDelete();
     if (lookScan) {
       lookScan = false;
-      if (higher) { WiFi.disconnect(); tryRank = -1; joinNext(); }
+      if (higher) { stopHost(); WiFi.disconnect(); tryRank = -1; joinNext(); }   // a higher one is back: move up
     } else if (any) {
       tryRank = -1;
       joinNext();
     } else {
-      startScan(false);
+      startHost();   // nobody above her: she hosts
     }
     // no dirty here: the screen only changes if what it shows did (viewSig, in loop)
   }
@@ -857,13 +1076,16 @@ void netLoop() {
       lostSince = 0;
       lastLook = millis();
       lastRegister = 0;
-      say(String("On ") + LADDER[rank], C_OK);
+      say(String("On ") + netName(), C_OK);
       lastRefresh = 0;
       showNetOnLed();
     } else if (millis() - tryStart > JOIN_MS) {
       WiFi.disconnect();
       joinNext();
     }
+  } else if (netState == NET_UP && hosting) {
+    fleetServer.handleClient();
+    if (!lookScan && millis() - lastLook > LOOK_MS) { lastLook = millis(); startScan(true); }
   } else if (netState == NET_UP) {
     if (WiFi.status() != WL_CONNECTED) {
       if (!lostSince) lostSince = millis();
@@ -889,21 +1111,22 @@ void netLoop() {
 void drawBar(const String& title, bool back) {
   lcd.fillRect(0, 0, W, BAR, C_PANEL);
   lcd.drawFastHLine(0, BAR, W, C_LINE);
-  if (back) {
-    button(4, 4, 88, BAR - 8, screen == SCR_CTRL ? "< HOME" : "< BACK", C_ACCENT, "back");
-    lcd.setFont(&fonts::Font4);
-    lcd.setTextColor(C_TEXT);
-    lcd.drawString(title, 104, 6);
-  } else {
-    lcd.setFont(&fonts::Font4);
-    lcd.setTextColor(C_ACCENT);
-    lcd.drawString(title, 10, 6);
-  }
+  const int tx = back ? 104 : 10;
+  if (back) button(4, 4, 88, BAR - 8, screen == SCR_CTRL ? "< HOME" : "< BACK", C_ACCENT, "back");
+  lcd.setFont(&fonts::Font4);
+  lcd.setTextColor(back ? C_TEXT : C_ACCENT);
+  lcd.drawString(title, tx, 6);
+  // RIFT: green while its hub answers, red when it doesn't (and while she hosts: that's why she does)
+  const int dx = tx + lcd.textWidth(title.c_str()) + 12;
+  lcd.fillCircle(dx, BAR / 2, 5, hubIsRift ? C_OK : C_BAD);
+  lcd.setFont(&fonts::Font2);
+  lcd.setTextColor(C_DIM);
+  lcd.drawString("RIFT", dx + 9, 11);
   String net;
   uint16_t c;
   if (netState == NET_UP) {
-    net = String(LADDER[rank]);
-    if (rank > 0 || !hubIsRift) net = net + (hubIsRift ? " / RIFT" : " / list only");
+    net = hosting ? String("hosting RITA (") + regCount + ")" : netName();
+    if (!hosting && (rank > 0 || !hubIsRift)) net = net + (hubIsRift ? " / RIFT" : " / list only");
     c = rank == 0 ? C_OK : C_WARN;
   }
   else if (netState == NET_JOINING) { net = String("joining ") + LADDER[tryRank]; c = C_DIM; }
@@ -1000,7 +1223,7 @@ void drawRobot() {
   if (n > PER) button(240, H - 40, 232, 34, "MORE", C_ACCENT, "more");
   if (!actionCount && hubIsRift) {
     lcd.setTextColor(C_DIM);
-    lcd.drawString("Nothing it can do through RIFT yet.", 244, BAR + 14);
+    lcd.drawString("Nothing " + heShe(sel) + " can do through RIFT yet.", 244, BAR + 14);
   }
 }
 
@@ -1013,8 +1236,8 @@ void drawConfirm() {
   lcd.drawString("Let RITA move " + sel + "?", W / 2, 84);
   lcd.setFont(&fonts::Font2);
   lcd.setTextColor(C_DIM);
-  lcd.drawString("Each tap moves it for 1 second.", W / 2, 124);
-  lcd.drawString("Its own stops (walls, tilt, locks) still hold.", W / 2, 144);
+  lcd.drawString("Each tap moves " + himHer(sel) + " for 1 second.", W / 2, 124);
+  lcd.drawString(HisHer(sel) + " own stops (walls, tilt, locks) still hold.", W / 2, 144);
   lcd.setTextDatum(top_left);
   button(80, H - 116, 140, 48, "YES", C_OK, "yes", true);
   button(W - 220, H - 116, 140, 48, "NO", C_BAD, "no");
@@ -1025,7 +1248,8 @@ void drawConfirm() {
 const int GRID_COLS = 5, CELL_W = W / GRID_COLS, CELL_H = (H - BAR) / 2;
 void drawHome() {
   drawBar("RITA", false);
-  button(84, 4, 84, BAR - 8, "STATS", C_ACCENT, "stats");
+  button(128, 4, 84, BAR - 8, "STATS", C_ACCENT, "stats");
+  button(218, 4, 64, BAR - 8, "WEB", C_ACCENT, "qr");
   for (int r = 0; r < ROSTER_N && r < GRID_COLS * 2; r++) {
     const int cx = (r % GRID_COLS) * CELL_W + CELL_W / 2;
     const int top = BAR + (r / GRID_COLS) * CELL_H + 10;
@@ -1062,6 +1286,35 @@ void trackButton(int x, int y, int w, int h, const String& txt, const String& id
   button(x, y, w, h, txt, c, id, on);
 }
 
+// KIDA-00's camera servo: a slider, 0 (her left) .. 180. Drag it and the camera follows.
+void drawServoSlider(int x, int y, int w, int h) {
+  servoSlider = { x, y, w, h };
+  lcd.fillRoundRect(x, y, w, h, 6, C_PANEL);
+  lcd.drawRoundRect(x, y, w, h, 6, C_LINE);
+  const int tx = x + 58, tw = w - 70, ty = y + h / 2;
+  lcd.drawFastHLine(tx, ty, tw, C_DIM);
+  lcd.drawFastVLine(tx + tw / 2, ty - 5, 11, C_DIM);   // centre
+  const int kx = tx + (long)servoAngle * tw / 180;
+  lcd.fillRoundRect(kx - 7, y + 4, 14, h - 8, 4, servoHeld ? C_ACCENT : C_TEXT);
+  lcd.setFont(&fonts::Font2);
+  lcd.setTextColor(C_TEXT);
+  lcd.setTextDatum(middle_left);
+  lcd.drawString("CAM " + String(servoAngle), x + 6, ty);
+  lcd.setTextDatum(top_left);
+  addBtn(x, y, w, h, "sl:servo");
+}
+int sliderAngle(int touchX) {
+  const int tx = servoSlider.x + 58, tw = servoSlider.w - 70;
+  return constrain((int)((long)(touchX - tx) * 180 / tw), 0, 180);
+}
+// Sent at most every 150 ms while dragging, and once more on letting go
+void servoSend(bool final) {
+  if (!curBase.length() || servoAngle == servoSent || (!final && millis() - servoSentAt < 150)) return;
+  servoSent = servoAngle;
+  servoSentAt = millis();
+  robotPost("/camera_servo", "{\"action\":\"angle\",\"angle\":" + String(servoAngle) + "}", 400);
+}
+
 // Under the camera, until its first frame: what's happening
 void drawCamNote() {
   int x, y, w, h;
@@ -1090,6 +1343,7 @@ void drawCamCtrl() {
   lcd.setTextColor(C_DIM);
   lcd.drawString(cam::fps > 0.5f ? String(cam::fps, 1) + " fps" : String(""), px, py + 3 * (b + g) + 4);
   lcd.drawString(ROSTER[cur].kind == K_KIDA00 ? "her HUD: what she sees" : camIdx ? "cam 1" : "cam 0: YOLO when on", px, py + 3 * (b + g) + 22);
+  if (ROSTER[cur].kind == K_KIDA00) drawServoSlider(2, BAR + 248, 320, 32);   // her camera is on a servo
 }
 
 void drawCtrl() {
@@ -1194,6 +1448,8 @@ void drawCtrl() {
     } else if (k == K_NORA) {  // A / D slide, so turning goes here
       padButton(bx, ey, ew, 40, "TURN L", "p:tl");
       padButton(bx + ew + g, ey, ew, 40, "TURN R", "p:tr");
+    } else if (k == K_KIDA00) {   // her camera's servo
+      drawServoSlider(bx, ey, 3 * bw + 2 * g, 40);
     } else {
       lcd.setFont(&fonts::Font2);
       lcd.setTextColor(C_DIM);
@@ -1230,11 +1486,12 @@ void drawCtrl() {
 // draw() wipes the whole screen, which shows as a black blink, so the periodic scans and refreshes
 // only redraw when this changes - not every few seconds.
 String viewSig() {
-  String s = String(netState) + "|" + rank + "|" + tryRank + "|" + hubIsRift + "|" + botCount;
+  String s = String(netState) + "|" + rank + "|" + tryRank + "|" + hubIsRift + "|" + botCount + "|" + hosting + regCount;
   for (int i = 0; i < botCount; i++) s += "|" + bots[i].name + "," + bots[i].type + "," + bots[i].ip + "," + bots[i].busy;
   if (screen == SCR_CTRL && cur >= 0 && ROSTER[cur].kind == K_DREAM) s += "|" + dreamState + dreamAsleep + dreamClipHere + dreamClip;
+  if (screen == SCR_QR) s += "|qr" + webUrl();
   if (screen == SCR_STATS || screen == SCR_STAT1) {
-    for (int r = 0; r < ROSTER_N; r++) s += "|" + String(stats[r].on) + stats[r].v[0] + stats[r].v[1] + stats[r].v[2] + stats[r].v[3];
+    for (int r = 0; r < ROSTER_N; r++) s += "|" + String(stats[r].on) + stats[r].v[0] + stats[r].v[1] + stats[r].v[2] + stats[r].v[3] + stats[r].v[4];
     if (screen == SCR_STAT1) { s += statCount; for (int i = 0; i < statCount; i++) s += statVal[i]; }
   }
   if (screen == SCR_CTRL && camView) s += "|cam" + String(camIdx) + (cam::status.length() ? cam::status : String("")) + (int)(cam::fps + 0.5f);
@@ -1251,10 +1508,11 @@ void drawStats() {
   const int rowH = 30, y0 = BAR + 6;
   lcd.setFont(&fonts::Font2);
   int row = 0;
-  for (int i = 0; i < 4; i++) {   // the column heads
+  const int cx0 = 112, cw = 73;   // five columns after the name
+  for (int i = 0; i < 5; i++) {   // the column heads
     lcd.setTextColor(C_DIM);
     lcd.setTextDatum(top_center);
-    lcd.drawString(STAT_NAMES[i], 150 + i * 86 + 40, y0);
+    lcd.drawString(STAT_NAMES[i], cx0 + i * cw + cw / 2, y0);
   }
   lcd.setTextDatum(top_left);
   for (int r = 0; r < ROSTER_N; r++) {
@@ -1267,12 +1525,13 @@ void drawStats() {
     lcd.setTextColor(on ? C_TEXT : C_DIM);
     lcd.drawString(ROSTER[r].label, 28, y + 6);
     lcd.setTextDatum(top_center);
-    for (int i = 0; i < 4; i++) {
-      lcd.setTextColor(st.v[i].length() ? C_TEXT : C_LINE);
-      lcd.drawString(on ? (st.v[i].length() ? st.v[i] : String("--")) : String(""), 150 + i * 86 + 40, y + 6);
+    for (int i = 0; i < 5; i++) {
+      const int dbm = i == 4 ? st.v[4].toInt() : 0;   // WIFI: green strong, amber fair, red weak
+      lcd.setTextColor(!st.v[i].length() ? C_LINE : dbm == 0 ? C_TEXT : dbm > -67 ? C_OK : dbm > -78 ? C_WARN : C_BAD);
+      lcd.drawString(on ? (st.v[i].length() ? st.v[i] : String("--")) : String(""), cx0 + i * cw + cw / 2, y + 6);
     }
     lcd.setTextDatum(top_left);
-    if (!on) { lcd.setTextColor(C_DIM); lcd.drawString(robotIp(r).length() ? "no answer" : "offline", 160, y + 6); }
+    if (!on) { lcd.setTextColor(C_DIM); lcd.drawString(robotIp(r).length() ? "no answer" : "offline", cx0 + 10, y + 6); }
     addBtn(4, y, W - 8, rowH - 3, "st:" + String(r));
   }
 }
@@ -1285,10 +1544,21 @@ void drawStat1() {
     lcd.drawString(robotIp(statSel).length() ? "Asking..." : "Not on the network.", 14, BAR + 14);
     return;
   }
-  const int PER = 28, colW = W / 2;
+  const String page = robotPage(statSel);   // its own site: a QR to it, on the right
+  if (page.length()) {
+    const int q = 150, qx = W - q - 14, qy = BAR + 12;
+    lcd.fillRect(qx - 4, qy - 4, q + 8, q + 8, TFT_WHITE);
+    lcd.qrcode(page.c_str(), qx, qy, q);
+    lcd.setTextColor(C_DIM);
+    lcd.setTextDatum(top_center);
+    lcd.drawString(hisHer(ROSTER[statSel].name) + (ROSTER[statSel].kind == K_DREAM ? " dashboard" : " page"), qx + q / 2, qy + q + 10);
+    lcd.drawString(page.substring(page.indexOf("//") + 2), qx + q / 2, qy + q + 28);
+    lcd.setTextDatum(top_left);
+  }
+  const int PER = 14;
   if (statPage * PER >= statCount) statPage = 0;
   for (int i = 0; i < PER && statPage * PER + i < statCount; i++) {
-    const int k = statPage * PER + i, x = 8 + (i / 14) * colW, y = BAR + 8 + (i % 14) * 18;
+    const int k = statPage * PER + i, x = 8, y = BAR + 8 + i * 18;
     String key = statKey[k];
     if (key.length() > 18) key = ".." + key.substring(key.length() - 16);
     lcd.setTextColor(statKind(statKey[k]) >= 0 ? C_ACCENT : C_DIM);
@@ -1296,7 +1566,99 @@ void drawStat1() {
     lcd.setTextColor(C_TEXT);
     lcd.drawString(statVal[k].substring(0, 14), x + 130, y);
   }
-  if (statCount > PER) button(W - 96, H - 34, 92, 30, "MORE", C_ACCENT, "stmore");
+  if (statCount > PER) button(8, H - 34, 92, 30, "MORE", C_ACCENT, "stmore");
+}
+
+String screenName() {
+  switch (screen) {
+    case SCR_HOME:    return "HOME: the fleet";
+    case SCR_STATS:   return "STATS: the fleet's sensors";
+    case SCR_STAT1:   return "STATS: one robot";
+    case SCR_QR:      return "WEB: the QR code to this page";
+    case SCR_FLEET:   return "The fleet list";
+    case SCR_ROBOT:   return "RIFT: ask and do";
+    case SCR_CONFIRM: return "Asking: let RITA move " + himHer(sel) + "?";
+    case SCR_CTRL:    return cur >= 0 && ROSTER[cur].kind == K_DREAM ? "DREAM" : "Driving";
+  }
+  return "";
+}
+String doingNow() {
+  if (screen == SCR_STAT1 && statSel >= 0) return String(ROSTER[statSel].label) + "'s sensors";
+  if ((screen == SCR_ROBOT || screen == SCR_CONFIRM) && sel.length()) return sel;
+  if (screen != SCR_CTRL || cur < 0) return "";
+  const Robot& R = ROSTER[cur];
+  if (R.kind == K_DREAM) {
+    String s = camView ? "DREAM's camera" : dreamClipHere ? "DREAM's screen, in step (" + dreamClip + ")" : "DREAM";
+    if (dreamState.length()) s += dreamAsleep ? ": asleep" : ": " + dreamState;
+    return s;
+  }
+  String s = String(R.label);
+  if (!curBase.length()) return s + " (not on the network)";
+  if (camView) s += String(", camera ") + (R.kind == K_KIDA01 ? String(camIdx) : String("on"));
+  if (tracked(cur)) s += tankUi ? ", TANK" : ", WASD";
+  if (heldPad.length()) s += ", driving: " + heldPad.substring(2);
+  else if (trackL || trackR) s += String(", tracks L ") + trackL + " R " + trackR;
+  else s += ", stopped";
+  return s;
+}
+
+// WEB: a QR code to her own page; while she hosts, a second one that joins her WiFi first
+String webUrl() { return "http://" + (hosting ? String("192.168.4.1") : WiFi.localIP().toString()) + "/"; }
+void drawQr() {
+  drawBar("Her web page", true);
+  lcd.setFont(&fonts::Font2);
+  lcd.setTextDatum(top_center);
+  if (netState != NET_UP) {
+    lcd.setTextColor(C_DIM);
+    lcd.drawString("She isn't on a network yet.", W / 2, H / 2 - 8);
+    lcd.setTextDatum(top_left);
+    return;
+  }
+  const int size = 196, y = BAR + 18;
+  if (hosting) {   // a phone has to be on her WiFi before the page opens
+    const String wifi = String("WIFI:T:WPA;S:") + AP_SSID + ";P:" + NORA_PASSWORD + ";;";
+    lcd.fillRect(26, y, size + 8, size + 8, TFT_WHITE);
+    lcd.qrcode(wifi.c_str(), 30, y + 4, size);
+    lcd.fillRect(W - 34 - size, y, size + 8, size + 8, TFT_WHITE);
+    lcd.qrcode(webUrl().c_str(), W - 30 - size, y + 4, size);
+    lcd.setTextColor(C_TEXT);
+    lcd.drawString("1. join her WiFi \"RITA\"", 30 + size / 2, y + size + 16);
+    lcd.drawString("2. open " + webUrl(), W - 30 - size / 2, y + size + 16);
+  } else {
+    lcd.fillRect(W / 2 - size / 2 - 4, y, size + 8, size + 8, TFT_WHITE);
+    lcd.qrcode(webUrl().c_str(), W / 2 - size / 2, y + 4, size);
+    lcd.setTextColor(C_TEXT);
+    lcd.drawString(webUrl() + "  (or rita.local)", W / 2, y + size + 16);
+    lcd.setTextColor(C_DIM);
+    lcd.drawString("On " + netName() + ": the phone has to be on it too", W / 2, y + size + 34);
+  }
+  lcd.setTextDatum(top_left);
+}
+
+void ledTick() {
+  static unsigned long last = 0;
+  if (millis() - last < 25) return;
+  last = millis();
+  auto scaled = [](uint8_t r, uint8_t g, uint8_t b, float k) { ledRgb(r * k, g * k, b * k); };
+  if (otaRunning) { const bool on = (millis() / 120) % 2; scaled(255, 255, 255, on ? 1.0f : 0.1f); return; }
+  const bool driving = screen == SCR_CTRL && cur >= 0;
+  if (driving && curBase.length() && lastCode <= 0 && ROSTER[cur].kind != K_ARM) {   // it isn't answering
+    scaled(255, 0, 0, (millis() / 250) % 2 ? 1.0f : 0.05f);
+    return;
+  }
+  if (driving && ROSTER[cur].kind == K_DREAM && dreamState.length()) {
+    if (dreamAsleep)                     scaled(20, 40, 255, 0.05f + 0.2f * breath(5000));
+    else if (dreamState == "talking")    scaled(255, 90, 10, 0.3f + 0.7f * breath(500));
+    else if (dreamState == "listening")  scaled(20, 230, 200, 0.8f);
+    else if (dreamState == "thinking")   scaled(170, 40, 255, 0.2f + 0.6f * breath(1600));
+    else                                 scaled(255, 110, 40, 0.15f + 0.25f * breath(3000));
+    return;
+  }
+  const float k = 0.12f + 0.45f * breath(3500);   // the network, breathing
+  if (netState != NET_UP)  scaled(255, 0, 0, k);
+  else if (hosting)        scaled(0, 60, 255, k);
+  else if (rank == 0)      scaled(0, 255, 40, k);
+  else                     scaled(255, 150, 0, k);
 }
 
 void draw() {
@@ -1305,6 +1667,7 @@ void draw() {
   lcd.fillScreen(C_BG);
   if (screen == SCR_HOME) drawHome();
   else if (screen == SCR_STATS) drawStats();
+  else if (screen == SCR_QR) drawQr();
   else if (screen == SCR_STAT1) drawStat1();
   else if (screen == SCR_CTRL) drawCtrl();
   else if (screen == SCR_FLEET) drawFleet();
@@ -1335,6 +1698,8 @@ void tankTap(const String& id) {
 void tap(const String& id) {
   if (id == "back" && screen == SCR_STAT1) { screen = SCR_STATS; statSel = -1; }
   else if (id == "back" && screen == SCR_STATS) { screen = SCR_HOME; lastRefresh = 0; }
+  else if (id == "back" && screen == SCR_QR) { screen = SCR_HOME; lastRefresh = 0; }
+  else if (id == "qr") { screen = SCR_QR; }
   else if (id == "stats") { screen = SCR_STATS; lastStat = 0; }
   else if (id.startsWith("st:")) { statSel = id.substring(3).toInt(); statPage = 0; statCount = 0; screen = SCR_STAT1; draw(); statPoll(statSel, true); lastStat = millis(); }
   else if (id == "stmore") { statPage++; }
@@ -1416,10 +1781,14 @@ void touchLoop() {
         const Btn& b = btns[i];
         if (x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h) {
           if (screen == SCR_CTRL && b.id.startsWith("p:")) padPress(b.id);
+          else if (b.id == "sl:servo") { servoHeld = true; servoAngle = sliderAngle(x); servoSend(false); dirty = true; }
           else tap(b.id);
           break;
         }
       }
+    } else if (servoHeld) {        // dragging KIDA-00's camera servo
+      const int a = sliderAngle(x);
+      if (a != servoAngle) { servoAngle = a; servoSend(false); drawServoSlider(servoSlider.x, servoSlider.y, servoSlider.w, servoSlider.h); }
     } else if (heldPad.length()) {
       for (int i = 0; i < btnCount; i++) {
         const Btn& b = btns[i];
@@ -1429,6 +1798,7 @@ void touchLoop() {
     wasDown = true;
   } else if (wasDown && millis() - lastDown > RELEASE_MS) {
     wasDown = false;
+    if (servoHeld) { servoHeld = false; servoSend(true); dirty = true; }
     padRelease();
   }
 }
@@ -1457,9 +1827,6 @@ void calibrate(bool force) {
 // ---------------------------------------------------------------------------
 void setup() {
   Serial.begin(115200);
-  pinMode(PIN_LED_R, OUTPUT);
-  pinMode(PIN_LED_G, OUTPUT);
-  pinMode(PIN_LED_B, OUTPUT);
   led(true, false, false);
 
   lcd.init();
@@ -1497,12 +1864,22 @@ void loop() {
   if (!otaUp && netState == NET_UP) {
     ArduinoOTA.setHostname("rita");
     ArduinoOTA.setPassword(ROBOT_PIN);
-    ArduinoOTA.onStart([]() { cam::stop(); mirror::hush(); lcd.fillScreen(C_BG); lcd.setTextColor(C_ACCENT); lcd.setFont(&fonts::Font4);
+    ArduinoOTA.onStart([]() { otaRunning = true; ledRgb(255, 255, 255); cam::stop(); mirror::hush(); lcd.fillScreen(C_BG); lcd.setTextColor(C_ACCENT); lcd.setFont(&fonts::Font4);
                               lcd.setTextDatum(middle_center); lcd.drawString("Updating over WiFi...", W / 2, H / 2); });
     ArduinoOTA.begin();
     otaUp = true;
   }
   if (otaUp) ArduinoOTA.handle();
+  if (!webUp && netState == NET_UP) webBegin();   // her web page, once she has a network
+  if (webUp) web.handleClient();
+  ledTick();
+  if (screen != SCR_STATS && screen != SCR_STAT1 && millis() - lastWebView < 15000 && millis() - lastStat > 700) {
+    lastStat = millis();   // the page is open: its sensors stay fresh, one robot at a time
+    for (int tries = 0; tries < ROSTER_N; tries++) {
+      statNext = (statNext + 1) % ROSTER_N;
+      if (hasStats(statNext)) { statPoll(statNext, false); break; }
+    }
+  }
   fleetBeaconLoop();
   touchLoop();
 
@@ -1521,6 +1898,19 @@ void loop() {
     if (s != shownSig) { shownSig = s; dirty = true; }
   }
   if (screen == SCR_CTRL) ctlLoop();
+  static unsigned long lastRift = 0;
+  if (millis() - lastRift > 5000 && screen != SCR_HOME && screen != SCR_FLEET && screen != SCR_STATS) {
+    lastRift = millis();
+    bool rift = false;
+    if (netState == NET_UP && !hosting) {
+      HTTPClient http;
+      http.begin(hubUrl() + "/clock");
+      http.setTimeout(400);
+      rift = http.GET() == 200;
+      http.end();
+    }
+    if (rift != hubIsRift) { hubIsRift = rift; dirty = true; }
+  }
   if (screen == SCR_STATS || screen == SCR_STAT1) statsLoop();
   static bool toastShown = false;
   bool toastNow = toast.length() && millis() <= toastUntil;

@@ -1,0 +1,37 @@
+/* RITA's own page: her colours (colour_scheme.xml) */
+:root {
+  --background: #10151D; --panel: #19212E; --border: #2E3B4E; --text: #EFE9D2;
+  --text-sec: #B6B097; --text-dim: #7C7A68; --accent: #E0702A; --accent2: #4FB0A5;
+  --ok: #50D282; --bad: #EB505A; --warn: #F0AA3C;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--background); color: var(--text); font-family: 'Segoe UI', Tahoma, sans-serif; padding: 20px; max-width: 900px; margin: 0 auto; }
+header { display: flex; align-items: center; gap: 18px; margin-bottom: 20px; }
+.avatar { width: 96px; height: 96px; border-radius: 50%; border: 2px solid var(--accent); object-fit: cover; }
+h1 { color: var(--accent); font-size: 2em; }
+.sub { color: var(--text-sec); }
+.net { margin-top: 6px; color: var(--accent2); }
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+h2 { font-size: 1.1em; color: var(--accent); margin-bottom: 10px; }
+dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; }
+dt { color: var(--text-dim); }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; color: var(--text-dim); font-weight: normal; padding: 4px 6px; border-bottom: 1px solid var(--border); }
+td { padding: 6px; border-bottom: 1px solid var(--border); }
+td.dim { color: var(--text-dim); }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; background: var(--bad); }
+.dot.on { background: var(--ok); }
+.dot.quiet { background: var(--warn); }
+a { color: var(--accent2); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.note { margin-top: 10px; color: var(--text-dim); font-size: 0.85em; }
+code { color: var(--text-sec); }
+ul { list-style: none; }
+li { padding: 3px 0; }
+@media (max-width: 600px) { th:nth-child(3), td:nth-child(3) { display: none; } }
+.now .screen { font-size: 1.3em; }
+.now .doing { color: var(--accent2); margin-top: 4px; }
+.now .toast { color: var(--text-sec); margin-top: 4px; font-style: italic; }
+.btn { display: inline-block; padding: 4px 12px; border: 1px solid var(--accent); border-radius: 8px; color: var(--accent); white-space: nowrap; }
+.btn:hover { background: var(--accent); color: var(--background); text-decoration: none; }
+.rift { font-size: 0.45em; color: var(--text-dim); vertical-align: middle; margin-left: 10px; font-weight: normal; }

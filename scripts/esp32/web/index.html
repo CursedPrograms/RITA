@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RITA</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <img src="/avatar.jpg" alt="RITA" class="avatar">
+    <div>
+      <h1>RITA <span id="rift" class="rift"><span class="dot"></span>RIFT</span></h1>
+      <p class="sub">Remote Interface for Total Autonomy</p>
+      <p id="net" class="net">...</p>
+    </div>
+  </header>
+
+  <section class="panel now">
+    <h2>On her screen now</h2>
+    <p id="screen" class="screen">...</p>
+    <p id="doing" class="doing"></p>
+    <p id="toast" class="toast"></p>
+  </section>
+
+  <section class="panel">
+    <h2>Her</h2>
+    <dl id="her"></dl>
+  </section>
+
+  <section class="panel">
+    <h2>The fleet</h2>
+    <table id="fleet">
+      <thead><tr><th>Robot</th><th>Temp</th><th>Humidity</th><th>Distance</th><th>Battery</th><th>WiFi</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <p class="note">From each robot's own <code>/status</code>, asked one at a time while this page is open. Driving stays on her touchscreen.</p>
+  </section>
+
+  <section class="panel" id="hostedPanel" hidden>
+    <h2>On her network</h2>
+    <ul id="hosted"></ul>
+  </section>
+
+  <script src="/app.js"></script>
+</body>
+</html>

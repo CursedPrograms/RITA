@@ -21,3 +21,12 @@ struct SerialPort {
   void begin(unsigned long) {}
 };
 static SerialPort Serial;
+
+struct EspClass { uint32_t getFreeHeap() const { return 180000; } };
+inline EspClass ESP;
+
+inline bool ledcAttachChannel(int, int, int, int) { return true; }
+inline bool ledcWrite(int, int) { return true; }
+#ifndef PI
+#define PI 3.14159265f
+#endif

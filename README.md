@@ -77,16 +77,19 @@ RITA is a 3.5" touch screen that shows the DREAM Robotics fleet and talks to it 
   - **Cameras** (CAM): KIDA-00's camera as her own HUD shows it, with what she sees marked; KIDA-01's two cameras (CAM 0 / CAM 1: cam 0 has her YOLO boxes while her inference is on), each beside a small pad so you can drive while you watch; and DREAM's camera with her detections (people, objects, faces). They're MJPEG streams, read a little at a time so RITA never stalls.
   - **ARM** (no WiFi): driven from her PC over USB, so RITA just says so.
   - **DREAM**: a small mirror of her. RITA plays the clip DREAM is showing, from the SD card and from the same frame, so the two screens move together, and DREAM's voice comes out of the speaker connector (SOUND turns it off). Without an SD card RITA shows DREAM's avatar and what she's doing. See [The SD card](#the-sd-card).
-- [x] **STATS** (on HOME): every robot's sensors in one table, TEMP, HUMIDITY, DISTANCE and BATTERY, from each robot's own `/status`, asked one robot at a time so she never stalls. The robots all name these differently (`temp`, `temperature`, `hum`, `distance_cm`, `range_cm`, `distances_cm.front`, `battery_pct`, `battery_v` ...), so she finds them by name, and new sensors show up by themselves. Tap a robot for everything it reports.
+- [x] **STATS** (on HOME): every robot's sensors in one table, TEMP, HUMIDITY, DISTANCE and BATTERY, from each robot's own `/status`, asked one robot at a time so she never stalls. The robots all name these differently (`temp`, `temperature`, `hum`, `distance_cm`, `range_cm`, `distances_cm.front`, `battery_pct`, `battery_v` ...), so she finds them by name, and new sensors show up by themselves. Tap a robot for everything he or she reports.
+- [x] **Her own web page** (http://rita.local, or her IP; http://192.168.4.1 while she hosts): in step with her, it shows what's on her screen right now and what she's doing (the robot she's driving, the pad button held, the camera, DREAM's state, her last message), her network, and the fleet with its sensors and an **Open site** button for each robot's own site (DREAM: her dashboard). It refreshes every second; driving stays on her touchscreen. The page is plain files in `scripts/esp32/web/` (`index.html`, `style.css`, `app.js`); `scripts/make_web.py` embeds them, and `flash.bat` runs it before every compile.
+- [x] **QR codes**: WEB on HOME shows one to her page (and, while she hosts, one that joins her WiFi "RITA" first). Each robot's STATS page has one to his or her own site.
+- [x] **She hosts when she has to**: her rung on the fleet's ladder is above NORA. With RIFT, DREAM, NINA, TINA and the controllers all off, she hosts "RITA" (192.168.4.1, up to 10 devices, LED blue) with the fleet list on :5000, so the robots join her; when a higher network is back she hands over and joins it.
 - [x] **RIFT too**: from a controller, RIFT: ASK / DO shows what the robot says about itself through RIFT and everything RIFT can do with it, as 1 s timed moves that ask *"Let RITA move NORA?"* first.
 - [x] **Safety stays with the robots**: their own stops (walls, tilt, the wheel locks) still hold. Their PIN (`ROBOT_PIN` in `secrets.h`) signs RITA in as a controller; unlocking wheels is its own button (UNLOCK).
 - [x] **The fleet's WiFi ladder**: she joins the highest network she can see (RIFT, DREAM, NINA, TINA, the controllers, NORA), looks again every minute, and starts over when hers goes quiet. She registers with the hub as `RITA` (type `remote`).
-- [x] **LED**: green on RIFT's network, amber on another one (the list works, ask and do need RIFT), red with no network.
+- [x] **RGB LED**, in colour (PWM): the network as a slow breath, green on RIFT's, amber on another (the list works, ask and do need RIFT), blue while she hosts, red with none; red blinking while the robot she's driving doesn't answer; on DREAM's screen it follows her (an orange pulse talking, teal listening, violet thinking, a dim blue breath asleep); white flashing while she updates over WiFi.
+- [x] **KIDA-00's camera servo**: a CAM slider under her pad and under her camera picture; drag it and the camera follows.
 
 ### Later
 - [ ] **SD card, more of it:** the robots' avatars as short looping clips on HOME (the built-in avatars stay, for a card-less RITA); an animated boot splash; a screensaver of DREAM's clips when RITA's been idle a while; her WiFi and robot list in a `rita.json` on the card; a log of what she sent and what each robot answered; music through the speaker.
 - [ ] DREAM's mirror from `scripts/dream.py` and `dream.exe` too (today it's her page: `app.py`, the browser and DREAM-Controller.exe).
-- [ ] Host the fleet herself when there's no RIFT (a place on the WiFi ladder).
 - [ ] RIFT's music together, the mission log and the robots' conversations.
 - [ ] Start a robot's MIND mode from her (through its PC controller).
 
@@ -206,6 +209,10 @@ It needs g++ and SDL2 (Windows: MSYS2's mingw64), Pillow for the pictures, and t
   <tr>
     <td><img src="images/screens/15_kida00_cam.png" width="400" alt="KIDA-00's camera beside a pad"></td>
     <td><img src="images/screens/16_dream_cam.png" width="400" alt="DREAM's camera with her detections"></td>
+  </tr>
+  <tr>
+    <td><img src="images/screens/19_web_qr.png" width="400" alt="WEB: a QR code to her page"></td>
+    <td><img src="images/screens/18_stats_nora.png" width="400" alt="NORA's stats and a QR code to her site"></td>
   </tr>
 </table>
 </details>

@@ -102,9 +102,11 @@ if (-not $Port -and -not $CompileOnly -and -not $Ota) {
 Write-Host "Port: $Port"
 
 # ---- compile (incremental), or skip it when nothing changed since the last build ----
+$py = (Get-Command python -ErrorAction SilentlyContinue).Source
+if ($py) { & $py (Join-Path $PSScriptRoot "make_web.py") }   # her web page (scripts/esp32/web) into web_page.h
 $bin = Join-Path $Build ((Split-Path $Sketch -Leaf) + ".ino.merged.bin")
 if (-not $NoCompile -and -not $CompileOnly -and (Test-Path $bin)) {
-    $newest = Get-ChildItem $Sketch -File -Recurse -Include *.ino, *.h, *.cpp, *.c |
+    $newest = Get-ChildItem $Sketch -File -Recurse -Include *.ino, *.h, *.cpp, *.c, *.html, *.css, *.js |
         Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if ($newest.LastWriteTime -lt (Get-Item $bin).LastWriteTime) {
         Say "Nothing changed since the last build, so I'll flash that."
