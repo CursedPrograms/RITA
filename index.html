@@ -63,8 +63,8 @@
     <div class="grid cols-3">
       <div class="card">
         <span class="k">Robots</span>
-        <h4>Nine on her screen</h4>
-        <p>ARIA the drone joins the rest: her state, battery and network, and the fleet&rsquo;s phrases. RITA doesn&rsquo;t fly her: she flies from her app or a gamepad. WHIP&rsquo;s crab offset has CRAB - and CRAB + buttons.</p>
+        <h4>Ten on her screen</h4>
+        <p>Every robot as a round avatar with a chatroom dot: green online, red not. ARIA shows her state, battery and network (RITA doesn&rsquo;t fly her), and DREAM is the tenth.</p>
       </div>
       <div class="card">
         <span class="k">Fleet</span>
@@ -93,8 +93,33 @@
       </div>
       <div class="card">
         <span class="k">WiFi</span>
-        <h4>The fleet&rsquo;s ladder</h4>
-        <p>She joins the highest fleet network she can see and moves up when she can. Her light: green on RIFT, amber elsewhere, red with none.</p>
+        <h4>She hosts when she has to</h4>
+        <p>Her rung on the fleet&rsquo;s ladder is above NORA: she joins RIFT, DREAM, NINA, TINA or a controller, and with none of them up she hosts &ldquo;RITA&rdquo; herself, so the robots join her out in the field. A higher network back: she hands over.</p>
+      </div>
+      <div class="card">
+        <span class="k">Stats</span>
+        <h4>The fleet&rsquo;s sensors</h4>
+        <p>Temperature, humidity, distance, battery and WiFi signal for every robot in one table, from each one&rsquo;s own status. Tap one for everything it reports, and a QR code to its own site.</p>
+      </div>
+      <div class="card">
+        <span class="k">Cameras</span>
+        <h4>See what they see</h4>
+        <p>KIDA-00&rsquo;s camera (with a slider for its servo), KIDA-01&rsquo;s two, and DREAM&rsquo;s, with their detections drawn on, beside a small pad so you can drive while you watch.</p>
+      </div>
+      <div class="card">
+        <span class="k">DREAM</span>
+        <h4>A small mirror of her</h4>
+        <p>With an SD card RITA plays the clip DREAM is showing, from the same frame, and DREAM&rsquo;s voice on her speaker. Without one, DREAM&rsquo;s avatar and what she&rsquo;s doing.</p>
+      </div>
+      <div class="card">
+        <span class="k">Web</span>
+        <h4>Her own page</h4>
+        <p>rita.local shows what&rsquo;s on her screen as it happens, her network and the fleet, with an Open site button for every robot. WEB on her screen shows its QR code.</p>
+      </div>
+      <div class="card">
+        <span class="k">Light</span>
+        <h4>Her LED, in colour</h4>
+        <p>A slow breath for the network (green RIFT, amber another, blue hosting, red none), red blinking when a robot doesn&rsquo;t answer, and DREAM&rsquo;s mood on her screen.</p>
       </div>
     </div>
   </div>
@@ -117,6 +142,8 @@
           <tr><td>Screen (HSPI)</td><td class="mono">SCLK 14, MOSI 13, MISO 12, DC 2, CS 15, backlight 27</td></tr>
           <tr><td>Touch (same bus)</td><td class="mono">CS 33, IRQ 36</td></tr>
           <tr><td>RGB LED (active low)</td><td class="mono">R 4, G 16, B 17</td></tr>
+          <tr><td>microSD (its own bus)</td><td class="mono">SCK 18, MISO 19, MOSI 23, CS 5</td></tr>
+          <tr><td>Speaker connector</td><td class="mono">26 (DAC)</td></tr>
         </tbody>
       </table>
     </div>
@@ -129,9 +156,10 @@
     <h3 class="title">Get her talking to the fleet</h3>
     <ol class="steps">
       <li>Copy <code>scripts/esp32/secrets.example.h</code> to <code>secrets.h</code> and put in the fleet&rsquo;s WiFi passwords.</li>
-      <li>Run <code>flash.bat</code>, or flash <code>scripts/esp32/esp32.ino</code> as an <b>ESP32 Dev Module</b> with the <b>Huge APP</b> partition scheme (libraries: LovyanGFX, ArduinoJson).</li>
+      <li>Run <code>flash.bat</code>, or flash <code>scripts/esp32/esp32.ino</code> as an <b>ESP32 Dev Module</b> with the <b>Minimal SPIFFS</b> partition scheme (libraries: LovyanGFX, ArduinoJson).</li>
       <li>On the first boot, tap each corner as it lights up. Hold the screen while she starts to calibrate again.</li>
       <li>She finds the fleet by herself. Tap a robot.</li>
+      <li>From then on, no cable: <code>flash.bat -Ota rita.local</code> updates her over WiFi.</li>
     </ol>
   </div>
 </section>
@@ -140,7 +168,7 @@
   <div class="wrap">
     <h2>Stay close</h2>
     <h3 class="title">The robots keep near you</h3>
-    <p>RITA sends the fleet's ESP-NOW beacon once she's on a fleet network. Press STAY on NORA's or WHIP's page and they keep near her, in your hand, stopping about a metre away. Her signal shows how far, not which way, so they try a direction, keep going if it gets stronger and turn if it doesn't. It's only been tested in simulation so far.</p>
+    <p>RITA sends the fleet's ESP-NOW beacon once she's on a fleet network. Press STAY on NORA's or WHIP's page and they keep near her, in your hand, stopping about a metre away. Her signal shows how far, not which way, so they try a direction, keep going if it gets stronger and turn if it doesn't. On the way they go round things: they slow down near something and sidestep round it toward open space, still heading for her, and back out of corners. It's been tested in simulation (round a wall in 47 of 50 pretend rooms, no bumps), not on the floor yet.</p>
   </div>
 </section>
 

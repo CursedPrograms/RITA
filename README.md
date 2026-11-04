@@ -31,7 +31,7 @@ RITA is a 3.5" touch screen that shows the DREAM Robotics fleet and talks to it 
 
 ---
 
-**STAY CLOSE:** RITA sends the fleet's ESP-NOW beacon once she's on a fleet network, so robots can tell how near she is. Her STAY button on NORA's and WHIP's pages makes them keep near her, about a metre away. Tested in simulation only so far.
+**STAY CLOSE:** RITA sends the fleet's ESP-NOW beacon once she's on a fleet network, so robots can tell how near she is. Her STAY button on NORA's and WHIP's pages makes them keep near her, about a metre away, going round things on the way: they slow down near something and sidestep round it toward open space (NORA's mecanum wheels, WHIP's crab), still heading for her, and back out of corners. Tested in simulation (round a wall in 47 of 50 pretend rooms, no bumps); not on the floor yet.
 
 **Colours:** `colour_scheme.xml` comes from her avatar: navy, cream, burnt orange and CRT teal, on her site and her screen.
 
@@ -83,7 +83,7 @@ RITA is a 3.5" touch screen that shows the DREAM Robotics fleet and talks to it 
 - [x] **She hosts when she has to**: her rung on the fleet's ladder is above NORA. With RIFT, DREAM, NINA, TINA and the controllers all off, she hosts "RITA" (192.168.4.1, up to 10 devices, LED blue) with the fleet list on :5000, so the robots join her; when a higher network is back she hands over and joins it.
 - [x] **RIFT too**: from a controller, RIFT: ASK / DO shows what the robot says about itself through RIFT and everything RIFT can do with it, as 1 s timed moves that ask *"Let RITA move NORA?"* first.
 - [x] **Safety stays with the robots**: their own stops (walls, tilt, the wheel locks) still hold. Their PIN (`ROBOT_PIN` in `secrets.h`) signs RITA in as a controller; unlocking wheels is its own button (UNLOCK).
-- [x] **The fleet's WiFi ladder**: she joins the highest network she can see (RIFT, DREAM, NINA, TINA, the controllers, NORA), looks again every minute, and starts over when hers goes quiet. She registers with the hub as `RITA` (type `remote`).
+- [x] **The fleet's WiFi ladder**: her rung is under the controllers and above NORA. She joins the highest network she can see above her (RIFT, DREAM, NINA, TINA, the controllers); with none, she hosts "RITA" herself (see below). She looks again every minute and moves up when a higher one is back. She registers with the hub as `RITA` (type `remote`).
 - [x] **RGB LED**, in colour (PWM): the network as a slow breath, green on RIFT's, amber on another (the list works, ask and do need RIFT), blue while she hosts, red with none; red blinking while the robot she's driving doesn't answer; on DREAM's screen it follows her (an orange pulse talking, teal listening, violet thinking, a dim blue breath asleep); white flashing while she updates over WiFi.
 - [x] **KIDA-00's camera servo**: a CAM slider under her pad and under her camera picture; drag it and the camera follows.
 
@@ -144,7 +144,7 @@ Negative colours? Flip `PANEL_INVERT` in `scripts/esp32/display.h`. Red and blue
 <summary><b>View How to Run</b></summary>
 
 1. Copy `scripts/esp32/secrets.example.h` to `secrets.h` and put in the fleet's WiFi passwords (the same as every robot's).
-2. Flash her: `flash.bat` (on a fresh PC it installs the Arduino command line tool, the ESP32 board package and her libraries by itself, then finds the port, compiles and flashes, talking you through it), or open `scripts/esp32/esp32.ino` in the Arduino IDE with **ESP32 Dev Module** and the **Huge APP** partition scheme.
+2. Flash her: `flash.bat` (on a fresh PC it installs the Arduino command line tool, the ESP32 board package and her libraries by itself, then finds the port, compiles and flashes, talking you through it), or open `scripts/esp32/esp32.ino` in the Arduino IDE with **ESP32 Dev Module** and the **Minimal SPIFFS** partition scheme (two app slots: what lets her update over WiFi).
 3. On the first boot, tap each corner as it lights up (touch calibration, kept in flash). Hold the screen while she starts to calibrate again.
 4. She finds the fleet's network by herself. Tap a robot to see it and drive it.
 5. After that, no cable or BOOT button: `flash.bat -Ota rita.local` (or her IP) sends new firmware over WiFi, to a RITA on the same network. Her password is `ROBOT_PIN`. This board doesn't reset into its flashing mode by itself, so for a cable flash hold BOOT while the screen flickers, until it goes black.
