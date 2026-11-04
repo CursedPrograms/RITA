@@ -55,6 +55,7 @@
 // A robot's own button on DRIVE. Up here, before any function: Arduino puts its function
 // prototypes (extrasOf()'s returns one) in front of the first function in the file.
 struct Extra { const char* label; const char* id; };
+struct Stat { String v[4]; bool on = false; bool any = false; };   // a robot's STATS row: TEMP, HUMIDITY, DISTANCE, BATTERY
 
 LGFX lcd;
 Preferences prefs;
@@ -143,7 +144,7 @@ bool has(const String& a) {
 // ---------------------------------------------------------------------------
 // Screens and buttons
 // ---------------------------------------------------------------------------
-enum Screen { SCR_HOME, SCR_CTRL, SCR_FLEET, SCR_ROBOT, SCR_CONFIRM };
+enum Screen { SCR_HOME, SCR_CTRL, SCR_FLEET, SCR_ROBOT, SCR_CONFIRM, SCR_STATS, SCR_STAT1 };
 Screen screen = SCR_HOME;
 bool dirty = true;
 unsigned long lastRefresh = 0;
@@ -327,6 +328,98 @@ String robotIp(int r) {
     ip = WiFi.gatewayIP().toString();
   return ip;
 }
+// ---------------------------------------------------------------------------
+// STATS: every robot's sensors from its own /status. Each names them its own way (temp, temperature,
+// temp_c; hum, humidity; distance_cm, range_cm, distances_cm.front; battery_pct, battery_v ...), so
+// the fields are recognised by name: whatever a robot reports, and anything it reports later, shows.
+// ---------------------------------------------------------------------------
+Stat stats[ROSTER_N];
+const char* const STAT_NAMES[4] = { "TEMP", "HUMIDITY", "DISTANCE", "BATTERY" };
+int statNext = 0, statSel = -1, statCount = 0, statPage = 0;
+unsigned long lastStat = 0;
+const int MAX_STAT_FIELDS = 48;
+String statKey[MAX_STAT_FIELDS], statVal[MAX_STAT_FIELDS];
+
+bool hasStats(int r) { return ROSTER[r].kind != K_ARM && ROSTER[r].kind != K_IDA; }
+String statusUrl(int r) {
+  const String ip = robotIp(r);
+  return ip.length() ? "http://" + ip + ":" + String(ROSTER[r].port) + "/status" : "";
+}
+
+// Which of the four a field is (-1: none), from its name
+int statKind(String k) {
+  k.toLowerCase();
+  if (k.indexOf("hum") >= 0) return 1;
+  if (k.indexOf("temp") >= 0 && k.indexOf("temperament") < 0 && !k.endsWith("temper") && k.indexOf("templ") < 0) return 0;   // not her mood's "temper"
+  if (k.indexOf("dist") >= 0 || k.indexOf("range") >= 0 || k.indexOf("sonar") >= 0 || k.indexOf("ultra") >= 0) return 2;
+  if (k.indexOf("bat") >= 0 || k.indexOf("volt") >= 0 || k.endsWith("soc")) return 3;
+  return -1;
+}
+String statUnit(String k, int kind) {
+  k.toLowerCase();
+  if (kind == 0) return "C";
+  if (kind == 1) return "%";
+  if (kind == 2) return k.indexOf("_mm") >= 0 ? "mm" : k.indexOf("cm") >= 0 ? "cm" : k.endsWith("_m") ? "m" : "";
+  if (kind == 3) return (k.indexOf("pct") >= 0 || k.indexOf("percent") >= 0) ? "%" : (k.endsWith("_v") || k.indexOf("volt") >= 0) ? "V" : "";
+  return "";
+}
+String statText(JsonVariantConst v) {
+  if (v.is<const char*>()) return String(v.as<const char*>());
+  if (v.is<bool>()) return v.as<bool>() ? "yes" : "no";
+  if (v.is<long>()) return String(v.as<long>());
+  if (v.is<float>()) { const float f = v.as<float>(); return String(f, fabsf(f) < 10 ? 2 : 1); }
+  String out; serializeJson(v, out); return out;
+}
+// Every leaf of the answer as "a.b: value"; the four summaries filled as they're met
+void statFlatten(JsonVariantConst v, const String& key, Stat* st, bool keep) {
+  if (v.is<JsonObjectConst>()) {
+    for (JsonPairConst kv : v.as<JsonObjectConst>()) statFlatten(kv.value(), key.length() ? key + "." + kv.key().c_str() : String(kv.key().c_str()), st, keep);
+    return;
+  }
+  if (v.is<JsonArrayConst>()) {
+    int i = 0;
+    for (JsonVariantConst e : v.as<JsonArrayConst>()) { if (i >= 6) break; statFlatten(e, key + "[" + i++ + "]", st, keep); }
+    return;
+  }
+  const String val = statText(v);
+  if (keep && statCount < MAX_STAT_FIELDS) { statKey[statCount] = key; statVal[statCount++] = val; }
+  const int kind = statKind(key);
+  if (kind < 0 || v.isNull() || !(v.is<float>() || v.is<long>())) return;
+  const String u = statUnit(key, kind);
+  String& slot = st->v[kind];
+  if (kind == 2 && slot.length()) { if (slot.length() < 14) slot = slot.substring(0, slot.lastIndexOf(' ') > 0 ? slot.lastIndexOf(' ') : slot.length()) + "/" + val + (u.length() ? " " + u : ""); }   // front/back
+  else if (!slot.length() || (kind == 0 && key.indexOf("cpu") < 0)) slot = val + (u.length() ? " " + u : "");
+  st->any = true;
+}
+// Ask robot r; keep = also every field, for its own page
+void statPoll(int r, bool keep) {
+  Stat fresh;
+  const String url = statusUrl(r);
+  if (keep) statCount = 0;
+  if (url.length() && netState == NET_UP) {
+    HTTPClient http;
+    http.begin(url);
+    http.setTimeout(450);
+    const int code = http.GET();
+    if (code == 200) {
+      JsonDocument doc;
+      if (!deserializeJson(doc, http.getString())) { fresh.on = true; statFlatten(doc.as<JsonVariantConst>(), "", &fresh, keep); }
+    }
+    http.end();
+  }
+  stats[r] = fresh;
+}
+// On STATS: one robot per tick, so RITA never waits on the whole fleet
+void statsLoop() {
+  if (millis() - lastStat < (screen == SCR_STAT1 ? 1500UL : 350UL)) return;
+  lastStat = millis();
+  if (screen == SCR_STAT1) { statPoll(statSel, true); return; }
+  for (int tries = 0; tries < ROSTER_N; tries++) {
+    statNext = (statNext + 1) % ROSTER_N;
+    if (hasStats(statNext)) { statPoll(statNext, false); return; }
+  }
+}
+
 bool tracked(int r) { return ROSTER[r].kind == K_TANK || ROSTER[r].kind == K_KIDA00 || ROSTER[r].kind == K_KIDA01; }
 
 const uint8_t* avatarOf(const char* name, size_t* len) {
@@ -932,6 +1025,7 @@ void drawConfirm() {
 const int GRID_COLS = 5, CELL_W = W / GRID_COLS, CELL_H = (H - BAR) / 2;
 void drawHome() {
   drawBar("RITA", false);
+  button(84, 4, 84, BAR - 8, "STATS", C_ACCENT, "stats");
   for (int r = 0; r < ROSTER_N && r < GRID_COLS * 2; r++) {
     const int cx = (r % GRID_COLS) * CELL_W + CELL_W / 2;
     const int top = BAR + (r / GRID_COLS) * CELL_H + 10;
@@ -1139,6 +1233,10 @@ String viewSig() {
   String s = String(netState) + "|" + rank + "|" + tryRank + "|" + hubIsRift + "|" + botCount;
   for (int i = 0; i < botCount; i++) s += "|" + bots[i].name + "," + bots[i].type + "," + bots[i].ip + "," + bots[i].busy;
   if (screen == SCR_CTRL && cur >= 0 && ROSTER[cur].kind == K_DREAM) s += "|" + dreamState + dreamAsleep + dreamClipHere + dreamClip;
+  if (screen == SCR_STATS || screen == SCR_STAT1) {
+    for (int r = 0; r < ROSTER_N; r++) s += "|" + String(stats[r].on) + stats[r].v[0] + stats[r].v[1] + stats[r].v[2] + stats[r].v[3];
+    if (screen == SCR_STAT1) { s += statCount; for (int i = 0; i < statCount; i++) s += statVal[i]; }
+  }
   if (screen == SCR_CTRL && camView) s += "|cam" + String(camIdx) + (cam::status.length() ? cam::status : String("")) + (int)(cam::fps + 0.5f);
   if (screen == SCR_ROBOT || screen == SCR_CONFIRM) {
     s += "|" + note;
@@ -1148,11 +1246,66 @@ String viewSig() {
   return s;
 }
 
+void drawStats() {
+  drawBar("STATS", true);
+  const int rowH = 30, y0 = BAR + 6;
+  lcd.setFont(&fonts::Font2);
+  int row = 0;
+  for (int i = 0; i < 4; i++) {   // the column heads
+    lcd.setTextColor(C_DIM);
+    lcd.setTextDatum(top_center);
+    lcd.drawString(STAT_NAMES[i], 150 + i * 86 + 40, y0);
+  }
+  lcd.setTextDatum(top_left);
+  for (int r = 0; r < ROSTER_N; r++) {
+    if (!hasStats(r)) continue;
+    const int y = y0 + 18 + row++ * rowH;
+    const Stat& st = stats[r];
+    const bool on = st.on;
+    lcd.fillRoundRect(4, y, W - 8, rowH - 3, 6, C_PANEL);
+    lcd.fillCircle(16, y + rowH / 2 - 1, 5, on ? C_OK : (robotIp(r).length() ? C_WARN : C_BAD));
+    lcd.setTextColor(on ? C_TEXT : C_DIM);
+    lcd.drawString(ROSTER[r].label, 28, y + 6);
+    lcd.setTextDatum(top_center);
+    for (int i = 0; i < 4; i++) {
+      lcd.setTextColor(st.v[i].length() ? C_TEXT : C_LINE);
+      lcd.drawString(on ? (st.v[i].length() ? st.v[i] : String("--")) : String(""), 150 + i * 86 + 40, y + 6);
+    }
+    lcd.setTextDatum(top_left);
+    if (!on) { lcd.setTextColor(C_DIM); lcd.drawString(robotIp(r).length() ? "no answer" : "offline", 160, y + 6); }
+    addBtn(4, y, W - 8, rowH - 3, "st:" + String(r));
+  }
+}
+
+void drawStat1() {
+  drawBar(String(ROSTER[statSel].label) + " stats", true);
+  lcd.setFont(&fonts::Font2);
+  if (!stats[statSel].on) {
+    lcd.setTextColor(C_DIM);
+    lcd.drawString(robotIp(statSel).length() ? "Asking..." : "Not on the network.", 14, BAR + 14);
+    return;
+  }
+  const int PER = 28, colW = W / 2;
+  if (statPage * PER >= statCount) statPage = 0;
+  for (int i = 0; i < PER && statPage * PER + i < statCount; i++) {
+    const int k = statPage * PER + i, x = 8 + (i / 14) * colW, y = BAR + 8 + (i % 14) * 18;
+    String key = statKey[k];
+    if (key.length() > 18) key = ".." + key.substring(key.length() - 16);
+    lcd.setTextColor(statKind(statKey[k]) >= 0 ? C_ACCENT : C_DIM);
+    lcd.drawString(key, x, y);
+    lcd.setTextColor(C_TEXT);
+    lcd.drawString(statVal[k].substring(0, 14), x + 130, y);
+  }
+  if (statCount > PER) button(W - 96, H - 34, 92, 30, "MORE", C_ACCENT, "stmore");
+}
+
 void draw() {
   btnCount = 0;
   lcd.startWrite();
   lcd.fillScreen(C_BG);
   if (screen == SCR_HOME) drawHome();
+  else if (screen == SCR_STATS) drawStats();
+  else if (screen == SCR_STAT1) drawStat1();
   else if (screen == SCR_CTRL) drawCtrl();
   else if (screen == SCR_FLEET) drawFleet();
   else drawRobot();
@@ -1180,7 +1333,12 @@ void tankTap(const String& id) {
 }
 
 void tap(const String& id) {
-  if (id == "back" && screen == SCR_CTRL) { ctlLeave(); screen = SCR_HOME; lastRefresh = 0; }
+  if (id == "back" && screen == SCR_STAT1) { screen = SCR_STATS; statSel = -1; }
+  else if (id == "back" && screen == SCR_STATS) { screen = SCR_HOME; lastRefresh = 0; }
+  else if (id == "stats") { screen = SCR_STATS; lastStat = 0; }
+  else if (id.startsWith("st:")) { statSel = id.substring(3).toInt(); statPage = 0; statCount = 0; screen = SCR_STAT1; draw(); statPoll(statSel, true); lastStat = millis(); }
+  else if (id == "stmore") { statPage++; }
+  else if (id == "back" && screen == SCR_CTRL) { ctlLeave(); screen = SCR_HOME; lastRefresh = 0; }
   else if (id == "back" && screen == SCR_ROBOT && cur >= 0) { screen = SCR_CTRL; sel = ""; moveOk = false; }
   else if (id == "back") { screen = SCR_HOME; sel = ""; moveOk = false; lastRefresh = 0; }
   else if (id.startsWith("go:")) {
@@ -1350,9 +1508,9 @@ void loop() {
 
   // HOME and FLEET: who's on the network; RIFT's ROBOT screen: what it says. DRIVE talks to its
   // robot itself (ctlLoop), so the fleet list isn't fetched while you drive.
-  if (netState == NET_UP && millis() - lastRefresh > REFRESH_MS && screen != SCR_CONFIRM && screen != SCR_CTRL) {
+  if (netState == NET_UP && millis() - lastRefresh > REFRESH_MS && screen != SCR_CONFIRM && screen != SCR_CTRL && screen != SCR_STAT1) {
     lastRefresh = millis();
-    if (screen == SCR_HOME || screen == SCR_FLEET) fetchFleet();
+    if (screen == SCR_HOME || screen == SCR_FLEET || screen == SCR_STATS) fetchFleet();
     else askRobot();
   }
   static String shownSig;
@@ -1363,6 +1521,7 @@ void loop() {
     if (s != shownSig) { shownSig = s; dirty = true; }
   }
   if (screen == SCR_CTRL) ctlLoop();
+  if (screen == SCR_STATS || screen == SCR_STAT1) statsLoop();
   static bool toastShown = false;
   bool toastNow = toast.length() && millis() <= toastUntil;
   if (toastShown && !toastNow) dirty = true;   // take it away

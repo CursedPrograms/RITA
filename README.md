@@ -77,6 +77,7 @@ RITA is a 3.5" touch screen that shows the DREAM Robotics fleet and talks to it 
   - **Cameras** (CAM): KIDA-00's camera as her own HUD shows it, with what she sees marked; KIDA-01's two cameras (CAM 0 / CAM 1: cam 0 has her YOLO boxes while her inference is on), each beside a small pad so you can drive while you watch; and DREAM's camera with her detections (people, objects, faces). They're MJPEG streams, read a little at a time so RITA never stalls.
   - **ARM** (no WiFi): driven from her PC over USB, so RITA just says so.
   - **DREAM**: a small mirror of her. RITA plays the clip DREAM is showing, from the SD card and from the same frame, so the two screens move together, and DREAM's voice comes out of the speaker connector (SOUND turns it off). Without an SD card RITA shows DREAM's avatar and what she's doing. See [The SD card](#the-sd-card).
+- [x] **STATS** (on HOME): every robot's sensors in one table, TEMP, HUMIDITY, DISTANCE and BATTERY, from each robot's own `/status`, asked one robot at a time so she never stalls. The robots all name these differently (`temp`, `temperature`, `hum`, `distance_cm`, `range_cm`, `distances_cm.front`, `battery_pct`, `battery_v` ...), so she finds them by name, and new sensors show up by themselves. Tap a robot for everything it reports.
 - [x] **RIFT too**: from a controller, RIFT: ASK / DO shows what the robot says about itself through RIFT and everything RIFT can do with it, as 1 s timed moves that ask *"Let RITA move NORA?"* first.
 - [x] **Safety stays with the robots**: their own stops (walls, tilt, the wheel locks) still hold. Their PIN (`ROBOT_PIN` in `secrets.h`) signs RITA in as a controller; unlocking wheels is its own button (UNLOCK).
 - [x] **The fleet's WiFi ladder**: she joins the highest network she can see (RIFT, DREAM, NINA, TINA, the controllers, NORA), looks again every minute, and starts over when hers goes quiet. She registers with the hub as `RITA` (type `remote`).
@@ -200,7 +201,11 @@ It needs g++ and SDL2 (Windows: MSYS2's mingw64), Pillow for the pictures, and t
   </tr>
   <tr>
     <td><img src="images/screens/14_dream.png" width="400" alt="DREAM on RITA: her sleeping clip from the SD card"></td>
-    <td></td>
+    <td><img src="images/screens/17_stats.png" width="400" alt="STATS: the fleet's sensors"></td>
+  </tr>
+  <tr>
+    <td><img src="images/screens/15_kida00_cam.png" width="400" alt="KIDA-00's camera beside a pad"></td>
+    <td><img src="images/screens/16_dream_cam.png" width="400" alt="DREAM's camera with her detections"></td>
   </tr>
 </table>
 </details>

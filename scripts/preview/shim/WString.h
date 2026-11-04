@@ -48,6 +48,8 @@ class String {
   void replace(const String& a, const String& b) {
     for (size_t at = 0; (at = s.find(a.s, at)) != std::string::npos; at += b.s.size()) s.replace(at, a.s.size(), b.s);
   }
+  void toLowerCase() { std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return (char)tolower(c); }); }
+  int lastIndexOf(char c) const { size_t i = s.rfind(c); return i == std::string::npos ? -1 : (int)i; }
   void toUpperCase() { std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return (char)toupper(c); }); }
   long toInt() const { return strtol(s.c_str(), nullptr, 10); }
 

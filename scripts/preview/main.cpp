@@ -84,6 +84,10 @@ int fakeHttp(const String& url, const String& body, String* answer) {
   else if (url.indexOf("/talk") >= 0 && body.indexOf("\"ask\"") >= 0) *answer = ASK_JSON;
   else if (url.indexOf(".24:") >= 0 && url.indexOf("/status") >= 0) *answer = ARIA_JSON;
   else if (url.indexOf(":5015/status") >= 0) *answer = dreamStatus();
+  else if (url.indexOf(".21:5002/status") >= 0) *answer = "{\"mode\":\"MANUAL\",\"temp\":23.4,\"hum\":51,\"distances_cm\":{\"front\":62,\"back\":140},\"battery_pct\":78}";
+  else if (url.indexOf(".23:5004/status") >= 0) *answer = "{\"sensors\":{\"temperature\":24.1,\"humidity\":48,\"distance_cm\":35},\"power\":{\"battery_v\":7.62},\"mode\":1}";
+  else if (url.indexOf(".20:5005/status") >= 0) *answer = "{\"mode\":\"web\",\"battery_v\":7.9,\"range_cm\":88,\"tilt\":2}";
+  else if (url.indexOf(".22:5010/status") >= 0) *answer = "{\"mode\":\"wasd\",\"dist\":41,\"bat_pct\":64}";
   // /status is polled all the time; everything else is her doing something, so it's worth reading
   if (!shots && url.indexOf("/status") < 0 && url.indexOf("/fleet") < 0 && url.indexOf("/register") < 0)
     printf("%s %s %s\n", body.length() ? "POST" : "GET ", url.c_str(), body.c_str());
@@ -232,6 +236,15 @@ static int takeShots() {
   tap("cam");
   settled("15_kida00_cam");
   tap("cam");
+  tap("back");
+
+  tap("stats");
+  settled("17_stats");
+  run(4000);
+  shot("17_stats");
+  tap("st:1");
+  settled("18_stats_nora");
+  tap("back");
   tap("back");
 
   if (!stops(0, "stop", "/mode?m=web") || !stops(1, "stop", "/modeManual") || !stops(2, "stop", "/mode?v=wasd") ||
