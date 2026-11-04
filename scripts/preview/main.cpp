@@ -9,7 +9,23 @@
 #include <string>
 
 void draw();
+#include <cstdio>
 #include "sketch.inc"
+
+// Her SD card: an sdcard folder next to the exe or above it (the repo's emulator/ has ../sdcard),
+// else the repo's sdcard/ it was built from
+std::string ritaSdcard() {
+  static std::string found;
+  if (!found.empty()) return found;
+  char* b = SDL_GetBasePath();
+  const std::string here = b ? b : "";
+  if (b) SDL_free(b);
+  for (const char* up : {"sdcard", "../sdcard", "../../sdcard"}) {
+    const std::string p = here + up;
+    if (FILE* f = fopen((p + "/dream/idle0.idx").c_str(), "rb")) { fclose(f); return found = p; }
+  }
+  return found = RITA_SDCARD;
+}
 
 // ---------------------------------------------------------------------------
 // The clock and the touch panel
@@ -208,6 +224,14 @@ static int takeShots() {
   tap("back");
   onRobot(9);
   settled("14_dream");
+  tap("cam");
+  settled("16_dream_cam");
+  tap("cam");
+  tap("back");
+  onRobot(4);
+  tap("cam");
+  settled("15_kida00_cam");
+  tap("cam");
   tap("back");
 
   if (!stops(0, "stop", "/mode?m=web") || !stops(1, "stop", "/modeManual") || !stops(2, "stop", "/mode?v=wasd") ||
@@ -239,6 +263,7 @@ static void present() {
 //   Q E         crab (WHIP) / turn on the spot (NORA)    Space   STOP
 //   Backspace   back                                     T       WASD <-> TANK
 //   R           RIFT: ask and do                         M       DREAM's sound on / off
+//   C           CAM: the camera (KIDA-00, KIDA-01, DREAM) V       KIDA-01: cam 0 / cam 1
 //   Esc         quit
 static bool onScreen(const char* id) {
   for (int i = 0; i < btnCount; i++) if (btns[i].id == id) return true;
@@ -267,6 +292,8 @@ static void key(SDL_Keycode k, bool down) {
   else if (k == SDLK_t && onScreen("scheme:tank")) tap(tankUi ? "scheme:wasd" : "scheme:tank");
   else if (k == SDLK_r && onScreen("rift")) tap("rift");
   else if (k == SDLK_m && onScreen("sound")) tap("sound");
+  else if (k == SDLK_c && onScreen("cam")) tap("cam");
+  else if (k == SDLK_v && onScreen("camsw")) tap("camsw");
 }
 
 static bool pump() {
@@ -284,7 +311,7 @@ static bool pump() {
 static int window() {
   if (SDL_Init(SDL_INIT_VIDEO) != 0) { printf("SDL: %s\n", SDL_GetError()); return 1; }
   printf("RITA: the mouse is your finger. Keys: 1-9/0 open a robot, WASD/arrows drive (hold), Q/E crab or turn,\n"
-         "Space STOP, Backspace back, T WASD/TANK, R RIFT, M DREAM's sound, Esc quits.\n");
+         "Space STOP, Backspace back, T WASD/TANK, R RIFT, M DREAM's sound, C camera, V KIDA-01's other camera, Esc quits.\n");
   SDL_Window* win = SDL_CreateWindow("RITA preview (a pretend fleet)", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                      W * SCALE, H * SCALE, 0);
   renderer = SDL_CreateRenderer(win, -1, 0);

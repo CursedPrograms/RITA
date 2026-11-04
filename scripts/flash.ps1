@@ -7,6 +7,9 @@
 #   flash.bat -NoCompile flash the last build without compiling (it also skips the
 #                        compile by itself when no sketch file changed since the last build)
 #   flash.bat -CompileOnly  just build (fast after the first time)
+#   flash.bat -Ota rita.local   over WiFi, no cable and no BOOT button (or -Ota 192.168.x.y; her
+#                        password is ROBOT_PIN in secrets.h). Needs the cable once, for the
+#                        firmware that can take updates over WiFi.
 #
 # The build is kept in build\esp32 (gitignored), so after the first compile
 # only the files you changed are rebuilt - unlike the Arduino IDE, which
@@ -15,13 +18,14 @@ param(
     [string]$Port = "",
     [switch]$Fast,
     [switch]$NoCompile,
-    [switch]$CompileOnly
+    [switch]$CompileOnly,
+    [string]$Ota = ""
 )
 
 # ---- what to flash (the only lines that differ between robots) ----
 $Robot  = "RITA"
 $Sketch = Join-Path $PSScriptRoot "esp32"
-$Fqbn   = "esp32:esp32:esp32:PartitionScheme=huge_app"   # room to grow (1.1 MB today, 85% of the default partition)
+$Fqbn   = "esp32:esp32:esp32:PartitionScheme=min_spiffs"   # two 1.9 MB app slots: room to grow, and updates over WiFi (1.3 MB today)
 $Before = ""   # anything to say before flashing ("" = nothing)
 $Libs   = @("LovyanGFX", "ArduinoJson")   # installed on the first run if missing
 # --------------------------------------------------------------------
@@ -88,7 +92,7 @@ $esptool = Get-ChildItem "$env:LOCALAPPDATA\Arduino15\packages\esp32\tools\espto
 if (-not $esptool) { Say "I can't find esptool in the E S P 32 board package."; exit 1 }
 
 # ---- port ----
-if (-not $Port -and -not $CompileOnly) {
+if (-not $Port -and -not $CompileOnly -and -not $Ota) {
     $boards = (& $cli board list --format json | ConvertFrom-Json)
     $ports = @(($boards.detected_ports + $boards) | Where-Object { $_.port.protocol -eq "serial" } | ForEach-Object { $_.port.address } | Select-Object -Unique)
     if ($ports.Count -eq 1) { $Port = $ports[0] }
@@ -115,6 +119,21 @@ if (-not $NoCompile) {
     Say ("Compiled in {0} seconds." -f [int]$t.Elapsed.TotalSeconds)
 }
 if ($CompileOnly) { exit 0 }
+
+# ---- over WiFi: espota from the ESP32 board package, to her ArduinoOTA ----
+if ($Ota) {
+    $espota = Get-ChildItem "$env:LOCALAPPDATA\Arduino15\packages\esp32\hardware\esp32\*\tools\espota.exe" -ErrorAction SilentlyContinue | Select-Object -Last 1
+    if (-not $espota) { Say "I can't find espota in the E S P 32 board package."; exit 1 }
+    $secrets = Join-Path $Sketch "secrets.h"
+    if (-not (Test-Path $secrets)) { $secrets = Join-Path $Sketch "secrets.example.h" }
+    $pin = ((Select-String -Path $secrets -Pattern '#define\s+ROBOT_PIN\s+"([^"]*)"').Matches | Select-Object -First 1).Groups[1].Value
+    $app = Join-Path $Build ((Split-Path $Sketch -Leaf) + ".ino.bin")
+    Say "Sending $Robot her new firmware over WiFi."
+    & $espota.FullName -i $Ota -p 3232 -a $pin -f $app -r
+    if ($LASTEXITCODE -ne 0) { Say "That didn't work. Is $Robot on, on the same network, and running the firmware that takes WiFi updates?"; exit 1 }
+    Say "Done. $Robot is restarting."
+    exit 0
+}
 if (-not (Test-Path $bin)) { Say "There's no build to flash yet. Run it without no compile."; exit 1 }
 
 # ---- flash, talking through it; retry until it works or you close the window ----

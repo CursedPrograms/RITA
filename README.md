@@ -74,6 +74,7 @@ RITA is a 3.5" touch screen that shows the DREAM Robotics fleet and talks to it 
   - **NORA** (mecanum): A / D slide, diagonals slide, TURN L / R, AUTO, UV, music, her wheel lock.
   - **MILA, NIKA, KIDA-00, KIDA-01** (tracks): **WASD** or **TANK**, switched at the top. The controls change, and so does the robot's own drive mode. The screen takes one finger at a time, so in TANK the tracks latch: tap the left track's FWD / STOP / BACK, then the right's, and each keeps going until you change it. LINK moves both together; the big STOP stops both.
   - **IDA** (no WiFi): through NORA's IR link.
+  - **Cameras** (CAM): KIDA-00's camera as her own HUD shows it, with what she sees marked; KIDA-01's two cameras (CAM 0 / CAM 1: cam 0 has her YOLO boxes while her inference is on), each beside a small pad so you can drive while you watch; and DREAM's camera with her detections (people, objects, faces). They're MJPEG streams, read a little at a time so RITA never stalls.
   - **ARM** (no WiFi): driven from her PC over USB, so RITA just says so.
   - **DREAM**: a small mirror of her. RITA plays the clip DREAM is showing, from the SD card and from the same frame, so the two screens move together, and DREAM's voice comes out of the speaker connector (SOUND turns it off). Without an SD card RITA shows DREAM's avatar and what she's doing. See [The SD card](#the-sd-card).
 - [x] **RIFT too**: from a controller, RIFT: ASK / DO shows what the robot says about itself through RIFT and everything RIFT can do with it, as 1 s timed moves that ask *"Let RITA move NORA?"* first.
@@ -142,6 +143,7 @@ Negative colours? Flip `PANEL_INVERT` in `scripts/esp32/display.h`. Red and blue
 2. Flash her: `flash.bat` (on a fresh PC it installs the Arduino command line tool, the ESP32 board package and her libraries by itself, then finds the port, compiles and flashes, talking you through it), or open `scripts/esp32/esp32.ino` in the Arduino IDE with **ESP32 Dev Module** and the **Huge APP** partition scheme.
 3. On the first boot, tap each corner as it lights up (touch calibration, kept in flash). Hold the screen while she starts to calibrate again.
 4. She finds the fleet's network by herself. Tap a robot to see it and drive it.
+5. After that, no cable or BOOT button: `flash.bat -Ota rita.local` (or her IP) sends new firmware over WiFi, to a RITA on the same network. Her password is `ROBOT_PIN`. This board doesn't reset into its flashing mode by itself, so for a cable flash hold BOOT while the screen flickers, until it goes black.
 </details>
 
 ---
@@ -164,7 +166,7 @@ Tap DREAM on HOME. DREAM's page tells her own app which clip it started and when
 <details open>
 <summary><b>See her screens with no board</b></summary>
 
-`preview.bat` (or `preview.sh`) builds `build/preview/rita_preview.exe`: RITA emulated in C++ on the PC. It runs her real `esp32.ino`, drawn by the real LovyanGFX, with a pretend WiFi and a pretend fleet behind it, and the repo's `sdcard/` folder as her SD card (so DREAM's clips play here too, from a pretend DREAM that talks, idles and sleeps in turn). The window is her screen, the mouse is your finger and the console prints every web call she makes.
+**`emulator\RITA-Emulator.exe`** is RITA emulated in C++ on the PC, ready to run (its DLLs are next to it). `preview.bat` (or `preview.sh`) builds it fresh as `build/preview/rita_preview.exe`. It runs her real `esp32.ino`, drawn by the real LovyanGFX, with a pretend WiFi and a pretend fleet behind it, and the repo's `sdcard/` folder as her SD card (so DREAM's clips play here too, from a pretend DREAM that talks, idles and sleeps in turn). The window is her screen, the mouse is your finger and the console prints every web call she makes.
 
 | Key | Does |
 |---|---|
@@ -175,6 +177,8 @@ Tap DREAM on HOME. DREAM's page tells her own app which clip it started and when
 | **T** | WASD / TANK |
 | **R** | RIFT: ask and do |
 | **M** | DREAM's sound on / off |
+| **C** | CAM: the camera (KIDA-00, KIDA-01, DREAM) |
+| **V** | KIDA-01: cam 0 / cam 1 |
 | **Backspace** | back |
 | **Esc** | quit |
  `preview.bat --shots` writes these pictures to `images/screens`, and fails if holding a pad button doesn't drive, letting go doesn't stop, or a robot has more buttons than DRIVE shows.

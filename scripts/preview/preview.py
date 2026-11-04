@@ -19,7 +19,8 @@ REPO = HERE.parents[1]
 BUILD = REPO / "build" / "preview"
 SCREENS = REPO / "images" / "screens"
 EXE = BUILD / ("rita_preview.exe" if os.name == "nt" else "rita_preview")
-FLAGS = ["-std=gnu++17", "-O1", "-w", "-DARDUINOJSON_ENABLE_ARDUINO_STRING=1",
+SECTIONS = ["-ffunction-sections", "-fdata-sections"]   # so the link can drop what she never uses (the CJK fonts)
+FLAGS = ["-std=gnu++17", "-O1", "-w", *SECTIONS, "-DARDUINOJSON_ENABLE_ARDUINO_STRING=1",
          f"-DRITA_SDCARD=\"{(REPO / 'sdcard').as_posix()}\""]   # her SD card: the repo's sdcard/ folder
 
 
@@ -63,7 +64,7 @@ def build():
             return obj
         obj.parent.mkdir(exist_ok=True)
         tool = gpp if source.suffix == ".cpp" else gpp.replace("g++", "gcc")
-        flags = FLAGS if source.suffix == ".cpp" else ["-O1", "-w"]
+        flags = FLAGS if source.suffix == ".cpp" else ["-O1", "-w", *SECTIONS]
         got = subprocess.run([tool, *flags, *includes, "-c", str(source), "-o", str(obj)],
                              env=env, capture_output=True, text=True)
         if got.returncode:
@@ -77,7 +78,7 @@ def build():
 
     shutil.copyfile(REPO / "scripts" / "esp32" / "esp32.ino", BUILD / "sketch.inc")
     libs = ["-lSDL2"] + (["-lws2_32", "-lwinmm"] if os.name == "nt" else ["-lpthread"])
-    subprocess.run([gpp, *FLAGS, *includes, str(HERE / "main.cpp"), *map(str, objects), *libs, "-o", str(EXE)],
+    subprocess.run([gpp, *FLAGS, *includes, str(HERE / "main.cpp"), *map(str, objects), *libs, "-Wl,--gc-sections", "-s", "-o", str(EXE)],
                    env=env, check=True)
     return env
 

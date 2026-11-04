@@ -42,6 +42,8 @@
 #include "splash.h"   // her avatar for the boot screen (scripts/make_splash.py)
 #include "avatars.h"  // the fleet's round avatars for HOME (scripts/make_avatars.py)
 #include "dream_mirror.h"   // DREAM's clips from the SD card and her voice: optional (sdcard/)
+#include "camera.h"         // the KIDAs' and DREAM's cameras (MJPEG, with their detections)
+#include <ArduinoOTA.h>     // new firmware over WiFi: flash.bat -Ota (no BOOT button)
 
 #if __has_include("secrets.h")
 #include "secrets.h"
@@ -342,6 +344,22 @@ String heldPad;                    // the pad button held now ("" = none)
 float heldF = 0, heldS = 0, heldT = 0;   // ... as forward, sideways (+ left), turn (+ anticlockwise)
 unsigned long lastBeat = 0, lastPoll = 0;
 int lastCode = 0;                  // the robot's last answer (HTTP code; <= 0: none)
+bool camView = false;              // CAM: its camera on the screen (KIDA-00, KIDA-01, DREAM)
+int camIdx = 0;                    // KIDA-01: cam 0 (ahead, YOLO) or cam 1
+bool hasCam(int r) { const Kind k = ROSTER[r].kind; return k == K_KIDA00 || k == K_KIDA01 || k == K_DREAM; }
+String camUrl() {
+  switch (ROSTER[cur].kind) {
+    case K_KIDA00: return curBase + "/video_feed";
+    case K_KIDA01: return curBase + "/video_feed/" + String(camIdx) + "?w=320";
+    case K_DREAM:  return curBase + "/camera.mjpeg?w=320";
+    default:       return "";
+  }
+}
+// Where the camera goes: beside the pad on the KIDAs, the whole video area on DREAM's screen
+void camBox(int* x, int* y, int* w, int* h) {
+  if (ROSTER[cur].kind == K_DREAM) { *x = 0; *y = BAR + 8; *w = W; *h = 270; }
+  else { *x = 2; *y = BAR + 4; *w = 320; *h = 240; }
+}
 
 int robotGet(const String& path, uint16_t timeout = 600) {
   if (!curBase.length() || netState != NET_UP) return -1;
@@ -537,6 +555,7 @@ void ctlScheme(bool tank) {
 
 // Leaving the controller: nothing keeps moving
 void ctlLeave() {
+  if (camView) { cam::stop(); camView = false; }
   if (cur >= 0 && ROSTER[cur].kind == K_DREAM) { mirror::hush(); mirror::show("", 0, true); dreamState = dreamClip = ""; }
   if (cur >= 0 && curBase.length()) {
     if (heldPad.length() || trackL || trackR) ctlStop();
@@ -949,15 +968,47 @@ void trackButton(int x, int y, int w, int h, const String& txt, const String& id
   button(x, y, w, h, txt, c, id, on);
 }
 
+// Under the camera, until its first frame: what's happening
+void drawCamNote() {
+  int x, y, w, h;
+  camBox(&x, &y, &w, &h);
+  lcd.drawRect(x, y, w, h, C_LINE);
+  lcd.setFont(&fonts::Font2);
+  lcd.setTextColor(C_DIM);
+  lcd.setTextDatum(middle_center);
+  lcd.drawString(curBase.length() ? (cam::status.length() ? cam::status : String("connecting...")) : String("not on the network"), x + w / 2, y + h / 2);
+  lcd.setTextDatum(top_left);
+}
+
+// A KIDA's camera with a small pad beside it: drive while you watch
+void drawCamCtrl() {
+  lcd.fillRect(216, 2, W - 218, BAR - 4, C_PANEL);
+  button(W - 88, 4, 84, BAR - 8, "CAM", C_ACCENT, "cam", true);
+  if (ROSTER[cur].kind == K_KIDA01) button(W - 176, 4, 84, BAR - 8, camIdx ? "CAM 1" : "CAM 0", C_ACCENT, "camsw");
+  drawCamNote();
+  const int px = 330, py = BAR + 10, b = 46, g = 4;   // a 3 x 3 pad, 150 wide
+  padButton(px + b + g, py, b, b, "^", "p:f");
+  padButton(px, py + b + g, b, b, "<", "p:l");
+  button(px + b + g, py + b + g, b, b, "STOP", C_BAD, "stop", true);
+  padButton(px + 2 * (b + g), py + b + g, b, b, ">", "p:r");
+  padButton(px + b + g, py + 2 * (b + g), b, b, "v", "p:b");
+  lcd.setFont(&fonts::Font2);
+  lcd.setTextColor(C_DIM);
+  lcd.drawString(cam::fps > 0.5f ? String(cam::fps, 1) + " fps" : String(""), px, py + 3 * (b + g) + 4);
+  lcd.drawString(ROSTER[cur].kind == K_KIDA00 ? "her HUD: what she sees" : camIdx ? "cam 1" : "cam 0: YOLO when on", px, py + 3 * (b + g) + 22);
+}
+
 void drawCtrl() {
   const Robot& R = ROSTER[cur];
   drawBar(R.label, true);
+  if (camView && R.kind != K_DREAM) { drawCamCtrl(); return; }
   const bool tank = tracked(cur) && tankUi;
   if (tracked(cur)) {   // WASD / TANK, where the network name usually is
     lcd.fillRect(250, 2, W - 252, BAR - 4, C_PANEL);
     button(W - 176, 4, 84, BAR - 8, "WASD", C_ACCENT, "scheme:wasd", !tankUi);
     button(W - 88, 4, 84, BAR - 8, "TANK", C_ACCENT, "scheme:tank", tankUi);
   }
+  if (hasCam(cur) && R.kind != K_DREAM) button(W - 264, 4, 84, BAR - 8, "CAM", C_ACCENT, "cam", false);   // its camera
 
   if (R.kind == K_ARM) {
     lcd.setFont(&fonts::Font2);
@@ -973,9 +1024,11 @@ void drawCtrl() {
     lcd.setTextColor(dreamAsleep ? C_DIM : C_ACCENT);
     lcd.setTextDatum(middle_right);
     const String doing = dreamAsleep ? "asleep" : dreamState.length() ? dreamState : String("--");
-    lcd.drawString(doing, W - 104, BAR / 2);
+    lcd.drawString(doing, W - 172, BAR / 2);
     lcd.setTextDatum(top_left);
+    button(W - 164, 4, 64, BAR - 8, "CAM", C_ACCENT, "cam", camView);
     button(W - 96, 4, 92, BAR - 8, mirror::sound ? "SOUND ON" : "SOUND OFF", C_ACCENT, "sound", mirror::sound);
+    if (camView) { drawCamNote(); return; }           // loop() draws her camera under the bar
     if (mirror::has()) { mirror::redraw(); return; }   // loop() draws her frames under the bar
     size_t len = 0;
     const uint8_t* jpg = avatarOf("DREAM", &len);
@@ -1086,6 +1139,7 @@ String viewSig() {
   String s = String(netState) + "|" + rank + "|" + tryRank + "|" + hubIsRift + "|" + botCount;
   for (int i = 0; i < botCount; i++) s += "|" + bots[i].name + "," + bots[i].type + "," + bots[i].ip + "," + bots[i].busy;
   if (screen == SCR_CTRL && cur >= 0 && ROSTER[cur].kind == K_DREAM) s += "|" + dreamState + dreamAsleep + dreamClipHere + dreamClip;
+  if (screen == SCR_CTRL && camView) s += "|cam" + String(camIdx) + (cam::status.length() ? cam::status : String("")) + (int)(cam::fps + 0.5f);
   if (screen == SCR_ROBOT || screen == SCR_CONFIRM) {
     s += "|" + note;
     for (int i = 0; i < statusCount; i++) s += "|" + statusLines[i];
@@ -1139,6 +1193,12 @@ void tap(const String& id) {
     ctlEnter(r);
     if (ROSTER[r].kind != K_ARM && !curBase.length()) say(String(ROSTER[r].label) + " isn't on the network", C_WARN);
   }
+  else if (id == "cam") {     // its camera on the screen, or back
+    camView = !camView;
+    if (camView && curBase.length()) cam::start(camUrl()); else cam::stop();
+    if (!camView && ROSTER[cur].kind == K_DREAM) mirror::redraw();
+  }
+  else if (id == "camsw") { camIdx ^= 1; if (camView && curBase.length()) cam::start(camUrl()); }
   else if (id == "sound") {   // DREAM's voice on the speaker (or the headphones)
     mirror::sound = !mirror::sound;
     if (!mirror::sound) mirror::hush();
@@ -1275,6 +1335,16 @@ void setup() {
 
 void loop() {
   netLoop();
+  static bool otaUp = false;          // new firmware over WiFi (flash.bat -Ota), once she has a network
+  if (!otaUp && netState == NET_UP) {
+    ArduinoOTA.setHostname("rita");
+    ArduinoOTA.setPassword(ROBOT_PIN);
+    ArduinoOTA.onStart([]() { cam::stop(); mirror::hush(); lcd.fillScreen(C_BG); lcd.setTextColor(C_ACCENT); lcd.setFont(&fonts::Font4);
+                              lcd.setTextDatum(middle_center); lcd.drawString("Updating over WiFi...", W / 2, H / 2); });
+    ArduinoOTA.begin();
+    otaUp = true;
+  }
+  if (otaUp) ArduinoOTA.handle();
   fleetBeaconLoop();
   touchLoop();
 
@@ -1299,7 +1369,8 @@ void loop() {
   toastShown = toastNow;
 
   if (dirty) draw();
-  const bool video = screen == SCR_CTRL && cur >= 0 && ROSTER[cur].kind == K_DREAM;
-  if (video) mirror::frame(lcd, 0, BAR + 8);   // DREAM's clip, 480 x 270
+  const bool video = screen == SCR_CTRL && cur >= 0 && (ROSTER[cur].kind == K_DREAM || camView);
+  if (screen == SCR_CTRL && camView) { int x, y, w, h; camBox(&x, &y, &w, &h); cam::poll(lcd, x, y, w, h); }
+  else if (video) mirror::frame(lcd, 0, BAR + 8);   // DREAM's clip, 480 x 270
   delay(video ? 1 : 10);                       // her frames come as fast as the card and decoder allow
 }

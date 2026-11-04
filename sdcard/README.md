@@ -5,7 +5,7 @@ Optional. Without a card RITA works exactly the same; with one, she can show wha
 **Fill it:** run `make_sdcard.bat` (or `python scripts/make_sdcard.py`; needs ffmpeg). It converts
 DREAM's clips (`../DREAM/videos`) into `dream/` here: each one as `<name>.mjpeg` (480 x 270, 15 fps,
 back-to-back JPEGs, since an ESP32 has no video decoder) and `<name>.idx` (where each frame starts).
-The converted clips aren't kept in git: run it again when DREAM's videos change.
+The converted clips are in the repo, so the folder is ready to copy; run it again when DREAM's videos change.
 
 **Copy it:** everything in this folder onto a **FAT32** microSD card, so the card has `/dream/` at its top.
 Put it in RITA's SD slot and restart her.

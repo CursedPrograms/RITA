@@ -11,6 +11,7 @@
 #ifndef RITA_SDCARD
 #define RITA_SDCARD "sdcard"
 #endif
+std::string ritaSdcard();   // main.cpp: next to the exe, else RITA_SDCARD
 
 namespace mirror {
 
@@ -37,7 +38,7 @@ static bool readFile(const std::string& path, std::vector<uint8_t>* out) {
 }
 
 bool begin() {
-  FILE* f = fopen((std::string(RITA_SDCARD) + "/dream/idle0.idx").c_str(), "rb");
+  FILE* f = fopen((ritaSdcard() + "/dream/idle0.idx").c_str(), "rb");
   card = f != nullptr;
   if (f) fclose(f);
   return card;
@@ -51,7 +52,7 @@ bool show(const String& name, uint32_t ms, bool loop) {
   clip = name.c_str(); frames = 0; shown = -1; offs.clear(); data.clear();
   if (!card || clip.empty()) return false;
   std::vector<uint8_t> ix;
-  const std::string base = std::string(RITA_SDCARD) + "/dream/" + clip;
+  const std::string base = ritaSdcard() + "/dream/" + clip;
   if (!readFile(base + ".idx", &ix) || ix.size() < 14 || memcmp(ix.data(), "RIDX", 4) || !readFile(base + ".mjpeg", &data)) return false;
   fps = ix[4] | ix[5] << 8;
   const uint32_t n = ix[10] | ix[11] << 8 | ix[12] << 16 | (uint32_t)ix[13] << 24;
