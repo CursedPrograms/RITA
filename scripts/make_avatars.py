@@ -20,7 +20,7 @@ QUALITY = 85
 ROBOTS = [
     ("WHIP", "WHIP-Robot-v00"), ("NORA", "NORA-Robot-v00"), ("MILA", "MILA-Robot-v00"),
     ("NIKA", "NIKA-Robot-v00"), ("KIDA00", "KIDA-Robot-v00"), ("KIDA01", "KIDA-Robot-v01"),
-    ("IDA", "IDA-Robot-v00"), ("ARM", "ARM-Robot-v01"), ("ARIA", "ARIA-Robot-v00"),
+    ("IDA", "IDA-Robot-v00"), ("ARM", "ARM-Robot-v01"), ("ARIA", "ARIA-Robot-v00"), ("DREAM", "DREAM"),
 ]
 
 here = Path(__file__).resolve().parent

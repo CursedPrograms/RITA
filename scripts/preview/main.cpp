@@ -38,7 +38,18 @@ static const char FLEET_JSON[] =
     "{\"name\":\"NORA\",\"type\":\"mecanum\",\"ip\":\"192.168.4.21\"},"
     "{\"name\":\"MILA\",\"type\":\"tank\",\"ip\":\"192.168.4.22\"},"
     "{\"name\":\"KIDA01\",\"type\":\"tank\",\"ip\":\"192.168.4.23\"},"
-    "{\"name\":\"ARIA\",\"type\":\"drone\",\"ip\":\"192.168.4.24\"}]}";
+    "{\"name\":\"ARIA\",\"type\":\"drone\",\"ip\":\"192.168.4.24\"},"
+    "{\"name\":\"DREAM\",\"type\":\"companion\",\"ip\":\"192.168.4.25\"}]}";
+
+// DREAM's mirror: talking, a line every 8 s, then idle and asleep in turn (the clips from sdcard/)
+static String dreamStatus() {
+  const unsigned long t = millis() % 24000;
+  const char* clip = t < 8000 ? "talking0" : t < 16000 ? "idle0" : "sleeping";
+  const char* state = t < 8000 ? "talking" : t < 16000 ? "idle" : "sleeping";
+  return String("{\"state\":\"") + state + "\",\"sleeping\":" + (t >= 16000 ? "true" : "false") +
+         ",\"clip\":\"" + clip + "\",\"clip_ms\":" + String((unsigned)(t % 8000)) + ",\"loop\":true,\"speech\":" +
+         (t < 8000 ? String("\"line") + String((unsigned)(millis() / 24000)) + "\"" : String("null")) + ",\"speech_ms\":" + String((unsigned)(t % 8000)) + "}";
+}
 
 static const char ASK_JSON[] =
     "{\"ok\":true,\"core\":{\"mode\":\"MANUAL\",\"moving\":false,\"music\":\"stopped\","
@@ -56,6 +67,7 @@ int fakeHttp(const String& url, const String& body, String* answer) {
   if (url.indexOf("/fleet") >= 0) *answer = FLEET_JSON;
   else if (url.indexOf("/talk") >= 0 && body.indexOf("\"ask\"") >= 0) *answer = ASK_JSON;
   else if (url.indexOf(".24:") >= 0 && url.indexOf("/status") >= 0) *answer = ARIA_JSON;
+  else if (url.indexOf(":5015/status") >= 0) *answer = dreamStatus();
   // /status is polled all the time; everything else is her doing something, so it's worth reading
   if (!shots && url.indexOf("/status") < 0 && url.indexOf("/fleet") < 0 && url.indexOf("/register") < 0)
     printf("%s %s %s\n", body.length() ? "POST" : "GET ", url.c_str(), body.c_str());
@@ -194,6 +206,9 @@ static int takeShots() {
   onRobot(8);
   settled("13_aria");
   tap("back");
+  onRobot(9);
+  settled("14_dream");
+  tap("back");
 
   if (!stops(0, "stop", "/mode?m=web") || !stops(1, "stop", "/modeManual") || !stops(2, "stop", "/mode?v=wasd") ||
       !stops(5, "stop", "stop_anywhere")) return 1;
@@ -219,10 +234,46 @@ static void present() {
   SDL_RenderPresent(renderer);
 }
 
+// The keyboard, as a finger on her buttons:
+//   1-9, 0      HOME: open WHIP .. ARIA, DREAM          W A S D / arrows   hold to drive (the pad)
+//   Q E         crab (WHIP) / turn on the spot (NORA)    Space   STOP
+//   Backspace   back                                     T       WASD <-> TANK
+//   R           RIFT: ask and do                         M       DREAM's sound on / off
+//   Esc         quit
+static bool onScreen(const char* id) {
+  for (int i = 0; i < btnCount; i++) if (btns[i].id == id) return true;
+  return false;
+}
+static void key(SDL_Keycode k, bool down) {
+  const char* pad = nullptr;
+  switch (k) {
+    case SDLK_w: case SDLK_UP: pad = "p:f"; break;
+    case SDLK_s: case SDLK_DOWN: pad = "p:b"; break;
+    case SDLK_a: case SDLK_LEFT: pad = "p:l"; break;
+    case SDLK_d: case SDLK_RIGHT: pad = "p:r"; break;
+    case SDLK_q: pad = onScreen("p:sl") ? "p:sl" : "p:tl"; break;
+    case SDLK_e: pad = onScreen("p:sr") ? "p:sr" : "p:tr"; break;
+  }
+  if (pad) {   // held like a finger on the pad: drives while down, stops when let go
+    if (down && screen == SCR_CTRL && onScreen(pad) && heldPad != pad) padPress(pad);
+    else if (!down && heldPad == pad) padRelease();
+    return;
+  }
+  if (!down) return;
+  if (k >= SDLK_1 && k <= SDLK_9 && screen == SCR_HOME) { if (k - SDLK_1 < ROSTER_N) tap(String("go:") + (int)(k - SDLK_1)); }
+  else if (k == SDLK_0 && screen == SCR_HOME && ROSTER_N >= 10) tap("go:9");
+  else if (k == SDLK_BACKSPACE && onScreen("back")) tap("back");
+  else if (k == SDLK_SPACE && onScreen("stop")) tap("stop");
+  else if (k == SDLK_t && onScreen("scheme:tank")) tap(tankUi ? "scheme:wasd" : "scheme:tank");
+  else if (k == SDLK_r && onScreen("rift")) tap("rift");
+  else if (k == SDLK_m && onScreen("sound")) tap("sound");
+}
+
 static bool pump() {
   SDL_Event e;
   while (SDL_PollEvent(&e)) {
     if (e.type == SDL_QUIT || (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE)) return false;
+    if ((e.type == SDL_KEYDOWN && !e.key.repeat) || e.type == SDL_KEYUP) key(e.key.keysym.sym, e.type == SDL_KEYDOWN);
     if (e.type == SDL_MOUSEBUTTONDOWN || e.type == SDL_MOUSEBUTTONUP) touchDown = e.type == SDL_MOUSEBUTTONDOWN;
     if (e.type == SDL_MOUSEBUTTONDOWN) { touchX = e.button.x / SCALE; touchY = e.button.y / SCALE; }
     if (e.type == SDL_MOUSEMOTION) { touchX = e.motion.x / SCALE; touchY = e.motion.y / SCALE; }
@@ -232,6 +283,8 @@ static bool pump() {
 
 static int window() {
   if (SDL_Init(SDL_INIT_VIDEO) != 0) { printf("SDL: %s\n", SDL_GetError()); return 1; }
+  printf("RITA: the mouse is your finger. Keys: 1-9/0 open a robot, WASD/arrows drive (hold), Q/E crab or turn,\n"
+         "Space STOP, Backspace back, T WASD/TANK, R RIFT, M DREAM's sound, Esc quits.\n");
   SDL_Window* win = SDL_CreateWindow("RITA preview (a pretend fleet)", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                      W * SCALE, H * SCALE, 0);
   renderer = SDL_CreateRenderer(win, -1, 0);

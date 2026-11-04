@@ -41,6 +41,7 @@
 #include "display.h"
 #include "splash.h"   // her avatar for the boot screen (scripts/make_splash.py)
 #include "avatars.h"  // the fleet's round avatars for HOME (scripts/make_avatars.py)
+#include "dream_mirror.h"   // DREAM's clips from the SD card and her voice: optional (sdcard/)
 
 #if __has_include("secrets.h")
 #include "secrets.h"
@@ -298,6 +299,8 @@ enum Kind : uint8_t {
   K_ARM,      // no WiFi: her USB port, from her PC
   K_ARIA,     // drone, :5014  /status, /chirp?u=: to look and talk. Nothing here flies her: a resistive
               //   screen has no sticks, and a slipped finger is a crash. She flies from her app or a gamepad
+  K_DREAM,    // DREAM's mirror, :5015 (plain HTTP, read-only)  /status, /speech/<id>: RITA plays the clip
+              //   she's showing from the SD card, in step, and her voice on the speaker (dream_mirror.h)
 };
 struct Robot { const char* name; const char* label; Kind kind; uint16_t port; };
 const Robot ROSTER[] = {
@@ -305,7 +308,7 @@ const Robot ROSTER[] = {
   { "MILA", "MILA", K_TANK, 5010 },     { "NIKA", "NIKA", K_TANK, 5013 },
   { "KIDA00", "KIDA-00", K_KIDA00, 5003 }, { "KIDA01", "KIDA-01", K_KIDA01, 5004 },
   { "IDA", "IDA", K_IDA, 5002 },        { "ARM", "ARM", K_ARM, 0 },
-  { "ARIA", "ARIA", K_ARIA, 5014 },
+  { "ARIA", "ARIA", K_ARIA, 5014 },     { "DREAM", "DREAM", K_DREAM, 5015 },
 };
 const int ROSTER_N = sizeof(ROSTER) / sizeof(ROSTER[0]);
 
@@ -316,7 +319,11 @@ String ipOf(const char* name) {
 }
 String robotIp(int r) {
   if (ROSTER[r].kind == K_ARM) return "";
-  return ipOf(ROSTER[r].kind == K_IDA ? "NORA" : ROSTER[r].name);
+  String ip = ipOf(ROSTER[r].kind == K_IDA ? "NORA" : ROSTER[r].name);
+  // on DREAM's own WiFi she's the network's host, so she may not be in her own list
+  if (!ip.length() && ROSTER[r].kind == K_DREAM && netState == NET_UP && rank >= 0 && !strcmp(LADDER[rank], "DREAM"))
+    ip = WiFi.gatewayIP().toString();
+  return ip;
 }
 bool tracked(int r) { return ROSTER[r].kind == K_TANK || ROSTER[r].kind == K_KIDA00 || ROSTER[r].kind == K_KIDA01; }
 
@@ -369,6 +376,27 @@ String jsonField(const String& body, const char* key) {
   while (end < (int)body.length() && body[end] != ',' && body[end] != '}') end++;
   return body.substring(at, end);
 }
+String dreamState, dreamClip;          // DREAM's last /status: what she's doing, the clip she shows
+bool dreamAsleep = false, dreamClipHere = false;
+void dreamPoll() {
+  if (!curBase.length() || netState != NET_UP) return;
+  HTTPClient http;
+  http.begin(curBase + "/status");
+  http.setTimeout(400);
+  lastCode = http.GET();
+  const String body = lastCode == 200 ? http.getString() : "";
+  http.end();
+  if (!body.length()) return;
+  auto field = [&](const char* k) { String v = jsonField(body, k); return v == "null" ? String("") : v; };
+  const String state = field("state"), clip = field("clip"), speech = field("speech");
+  const bool asleep = field("sleeping") == "true";
+  const bool here = mirror::show(clip, field("clip_ms").toInt(), field("loop") != "false");
+  if (speech.length()) mirror::say(curBase, speech, field("speech_ms").toInt());
+  else mirror::voiceId = "";            // she's quiet: the same line (a cached "Yes?") can play again
+  if (state != dreamState || asleep != dreamAsleep || here != dreamClipHere || clip != dreamClip) dirty = true;
+  dreamState = state; dreamAsleep = asleep; dreamClipHere = here; dreamClip = clip;
+}
+
 String ariaMode, ariaBattery, ariaNetwork;   // her last /status
 void ariaPoll() {
   if (!curBase.length() || netState != NET_UP) return;
@@ -509,6 +537,7 @@ void ctlScheme(bool tank) {
 
 // Leaving the controller: nothing keeps moving
 void ctlLeave() {
+  if (cur >= 0 && ROSTER[cur].kind == K_DREAM) { mirror::hush(); mirror::show("", 0, true); dreamState = dreamClip = ""; }
   if (cur >= 0 && curBase.length()) {
     if (heldPad.length() || trackL || trackR) ctlStop();
     if (ROSTER[cur].kind == K_TANK && tankUi) robotGet("/mode?v=wasd");
@@ -527,10 +556,11 @@ void ctlLoop() {
     lastBeat = now;
     ctlTracks(trackL, trackR);
   }
-  const unsigned long pollMs = k == K_TANK ? 400 : 1500;
+  const unsigned long pollMs = k == K_TANK ? 400 : k == K_DREAM ? 500 : 1500;
   if (now - lastPoll > pollMs && k != K_IDA) {
     lastPoll = now;
     if (k == K_ARIA) { ariaPoll(); return; }
+    if (k == K_DREAM) { dreamPoll(); return; }
     const int code = robotGet("/status", 500);
     if ((code > 0) != (lastCode > 0)) dirty = true;
     if (!heldPad.length() || code <= 0) lastCode = code;
@@ -705,7 +735,7 @@ void netLoop() {
     } else {
       startScan(false);
     }
-    dirty = true;
+    // no dirty here: the screen only changes if what it shows did (viewSig, in loop)
   }
 
   if (netState == NET_JOINING) {
@@ -879,7 +909,7 @@ void drawConfirm() {
 }
 
 // HOME: the roster in a 5 x 2 grid, each robot's round avatar with its name under it. On the
-// network: a green ring; not: dimmed, a grey ring. (Online = in the fleet list.)
+// network: a green dot on the avatar; not: dimmed, a red dot. (Online = in the fleet list.)
 const int GRID_COLS = 5, CELL_W = W / GRID_COLS, CELL_H = (H - BAR) / 2;
 void drawHome() {
   drawBar("RITA", false);
@@ -895,9 +925,12 @@ void drawHome() {
       for (int y = top; y < top + AVATAR_SIZE; y += 2)
         for (int x = cx - AVATAR_SIZE / 2 + (y & 2 ? 1 : 0); x < cx + AVATAR_SIZE / 2; x += 2) lcd.drawPixel(x, y, C_BG);
     }
-    const uint16_t ring = on ? C_OK : C_LINE;
-    lcd.drawCircle(cx, cy, AVATAR_SIZE / 2 + 2, ring);
-    lcd.drawCircle(cx, cy, AVATAR_SIZE / 2 + 3, ring);
+    lcd.drawCircle(cx, cy, AVATAR_SIZE / 2 + 2, C_LINE);
+    lcd.drawCircle(cx, cy, AVATAR_SIZE / 2 + 3, C_LINE);
+    // online dot, like a chatroom: bottom right on the ring, green = on the network, red = not
+    const int dr = AVATAR_SIZE / 2 + 2, dx = cx + dr * 707 / 1000, dy = cy + dr * 707 / 1000;
+    lcd.fillCircle(dx, dy, 9, C_BG);                 // a gap round the dot so it stands out
+    lcd.fillCircle(dx, dy, 7, on ? C_OK : C_BAD);
     lcd.setFont(&fonts::Font2);
     lcd.setTextColor(on ? C_TEXT : C_DIM);
     lcd.setTextDatum(top_center);
@@ -931,6 +964,34 @@ void drawCtrl() {
     lcd.setTextColor(C_DIM);
     lcd.drawString("ARM has no WiFi: she's driven from her PC,", 14, BAR + 20);
     lcd.drawString("over her USB port (ARM-Robot-v01/scripts).", 14, BAR + 40);
+    return;
+  }
+
+  if (R.kind == K_DREAM) {   // the clip she's showing (from the SD card, in step), or her avatar
+    lcd.fillRect(250, 2, W - 252, BAR - 4, C_PANEL);
+    lcd.setFont(&fonts::Font2);
+    lcd.setTextColor(dreamAsleep ? C_DIM : C_ACCENT);
+    lcd.setTextDatum(middle_right);
+    const String doing = dreamAsleep ? "asleep" : dreamState.length() ? dreamState : String("--");
+    lcd.drawString(doing, W - 104, BAR / 2);
+    lcd.setTextDatum(top_left);
+    button(W - 96, 4, 92, BAR - 8, mirror::sound ? "SOUND ON" : "SOUND OFF", C_ACCENT, "sound", mirror::sound);
+    if (mirror::has()) { mirror::redraw(); return; }   // loop() draws her frames under the bar
+    size_t len = 0;
+    const uint8_t* jpg = avatarOf("DREAM", &len);
+    const int cx = W / 2, top = BAR + 30;
+    if (jpg) lcd.drawJpg(jpg, len, cx - AVATAR_SIZE / 2, top);
+    lcd.drawCircle(cx, top + AVATAR_SIZE / 2, AVATAR_SIZE / 2 + 2, C_LINE);
+    lcd.setFont(&fonts::Font4);
+    lcd.setTextColor(C_TEXT);
+    lcd.setTextDatum(top_center);
+    lcd.drawString(curBase.length() ? (dreamAsleep ? "She's asleep" : "DREAM is " + doing) : String("DREAM isn't on the network"), cx, top + AVATAR_SIZE + 16);
+    lcd.setFont(&fonts::Font2);
+    lcd.setTextColor(C_DIM);
+    lcd.drawString(!mirror::card ? "No SD card: copy RITA's sdcard folder onto one to see her clips."
+                   : dreamClip.length() ? "This clip (" + dreamClip + ") isn't on the SD card yet."
+                   : "Waiting for her screen...", cx, top + AVATAR_SIZE + 52);
+    lcd.setTextDatum(top_left);
     return;
   }
 
@@ -1018,6 +1079,21 @@ void drawCtrl() {
   if (hubIsRift) button(rx, ey0 + 4 * (eh + 4), 2 * ew2 + 6, eh, "RIFT: ASK / DO", C_DIM, "rift");
 }
 
+// Everything the screens show that changes on its own (network, fleet list, a robot's answer).
+// draw() wipes the whole screen, which shows as a black blink, so the periodic scans and refreshes
+// only redraw when this changes - not every few seconds.
+String viewSig() {
+  String s = String(netState) + "|" + rank + "|" + tryRank + "|" + hubIsRift + "|" + botCount;
+  for (int i = 0; i < botCount; i++) s += "|" + bots[i].name + "," + bots[i].type + "," + bots[i].ip + "," + bots[i].busy;
+  if (screen == SCR_CTRL && cur >= 0 && ROSTER[cur].kind == K_DREAM) s += "|" + dreamState + dreamAsleep + dreamClipHere + dreamClip;
+  if (screen == SCR_ROBOT || screen == SCR_CONFIRM) {
+    s += "|" + note;
+    for (int i = 0; i < statusCount; i++) s += "|" + statusLines[i];
+    for (int i = 0; i < actionCount; i++) s += "|" + actions[i];
+  }
+  return s;
+}
+
 void draw() {
   btnCount = 0;
   lcd.startWrite();
@@ -1062,6 +1138,11 @@ void tap(const String& id) {
     draw();
     ctlEnter(r);
     if (ROSTER[r].kind != K_ARM && !curBase.length()) say(String(ROSTER[r].label) + " isn't on the network", C_WARN);
+  }
+  else if (id == "sound") {   // DREAM's voice on the speaker (or the headphones)
+    mirror::sound = !mirror::sound;
+    if (!mirror::sound) mirror::hush();
+    prefs.begin("rita", false); prefs.putBool("sound", mirror::sound); prefs.end();
   }
   else if (id == "stop" || id == "t:stop") { trackL = trackR = 0; heldPad = ""; if (curBase.length()) ctlHalt(); }
   else if (id.startsWith("scheme:")) { if (curBase.length()) ctlScheme(id == "scheme:tank"); else tankUi = id == "scheme:tank"; }
@@ -1182,6 +1263,9 @@ void setup() {
   delay(5000);   // her splash: 5 s
   int32_t x, y;
   calibrate(lcd.getTouch(&x, &y));   // held at boot: calibrate again
+  mirror::begin();                    // an SD card with DREAM's clips, if there is one
+  mirror::voiceBegin();               // her voice on the speaker connector
+  prefs.begin("rita", true); mirror::sound = prefs.getBool("sound", true); prefs.end();
 
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);
@@ -1200,7 +1284,13 @@ void loop() {
     lastRefresh = millis();
     if (screen == SCR_HOME || screen == SCR_FLEET) fetchFleet();
     else askRobot();
-    dirty = true;
+  }
+  static String shownSig;
+  static unsigned long lastSigCheck = 0;
+  if (dirty || millis() - lastSigCheck > 250) {   // redraw only when what she shows changed
+    lastSigCheck = millis();
+    String s = viewSig();
+    if (s != shownSig) { shownSig = s; dirty = true; }
   }
   if (screen == SCR_CTRL) ctlLoop();
   static bool toastShown = false;
@@ -1209,5 +1299,7 @@ void loop() {
   toastShown = toastNow;
 
   if (dirty) draw();
-  delay(10);
+  const bool video = screen == SCR_CTRL && cur >= 0 && ROSTER[cur].kind == K_DREAM;
+  if (video) mirror::frame(lcd, 0, BAR + 8);   // DREAM's clip, 480 x 270
+  delay(video ? 1 : 10);                       // her frames come as fast as the card and decoder allow
 }

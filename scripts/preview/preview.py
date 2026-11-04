@@ -19,7 +19,8 @@ REPO = HERE.parents[1]
 BUILD = REPO / "build" / "preview"
 SCREENS = REPO / "images" / "screens"
 EXE = BUILD / ("rita_preview.exe" if os.name == "nt" else "rita_preview")
-FLAGS = ["-std=gnu++17", "-O1", "-w", "-DARDUINOJSON_ENABLE_ARDUINO_STRING=1"]
+FLAGS = ["-std=gnu++17", "-O1", "-w", "-DARDUINOJSON_ENABLE_ARDUINO_STRING=1",
+         f"-DRITA_SDCARD=\"{(REPO / 'sdcard').as_posix()}\""]   # her SD card: the repo's sdcard/ folder
 
 
 def compiler():

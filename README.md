@@ -67,7 +67,7 @@ RITA is a 3.5" touch screen that shows the DREAM Robotics fleet and talks to it 
 
 ### What she does
 - [x] **Splash**: her TV-head avatar for 5 s at power-up.
-- [x] **Home**: every robot she drives, its round avatar with its name under it: WHIP, NORA, MILA, NIKA, KIDA-00, KIDA-01, IDA, ARM and ARIA. The ones on the network have a green ring; the rest are dimmed.
+- [x] **Home**: every robot she drives, its round avatar with its name under it: WHIP, NORA, MILA, NIKA, KIDA-00, KIDA-01, IDA, ARM, ARIA and DREAM. Each avatar has a dot like a chatroom's: green when the robot is on the network, red (and the avatar dimmed) when it isn't.
 - [x] **A controller for each robot**: tap one and drive it, talking to the robot directly (its own web API, the one its PC controller uses). Hold a pad button to drive, let go and it stops. Each robot gets its own pad and buttons:
   - **WHIP** (hexapod): W / A / S / D with curves, crab left / right, HELLO, DANCE, REST, AUTO, CRAB - / + (his crab offset, a degree a press).
   - **ARIA** (drone): her state, battery and network, and the fleet's phrases. No flying: she flies from her app or a gamepad.
@@ -75,12 +75,15 @@ RITA is a 3.5" touch screen that shows the DREAM Robotics fleet and talks to it 
   - **MILA, NIKA, KIDA-00, KIDA-01** (tracks): **WASD** or **TANK**, switched at the top. The controls change, and so does the robot's own drive mode. The screen takes one finger at a time, so in TANK the tracks latch: tap the left track's FWD / STOP / BACK, then the right's, and each keeps going until you change it. LINK moves both together; the big STOP stops both.
   - **IDA** (no WiFi): through NORA's IR link.
   - **ARM** (no WiFi): driven from her PC over USB, so RITA just says so.
+  - **DREAM**: a small mirror of her. RITA plays the clip DREAM is showing, from the SD card and from the same frame, so the two screens move together, and DREAM's voice comes out of the speaker connector (SOUND turns it off). Without an SD card RITA shows DREAM's avatar and what she's doing. See [The SD card](#the-sd-card).
 - [x] **RIFT too**: from a controller, RIFT: ASK / DO shows what the robot says about itself through RIFT and everything RIFT can do with it, as 1 s timed moves that ask *"Let RITA move NORA?"* first.
 - [x] **Safety stays with the robots**: their own stops (walls, tilt, the wheel locks) still hold. Their PIN (`ROBOT_PIN` in `secrets.h`) signs RITA in as a controller; unlocking wheels is its own button (UNLOCK).
 - [x] **The fleet's WiFi ladder**: she joins the highest network she can see (RIFT, DREAM, NINA, TINA, the controllers, NORA), looks again every minute, and starts over when hers goes quiet. She registers with the hub as `RITA` (type `remote`).
 - [x] **LED**: green on RIFT's network, amber on another one (the list works, ask and do need RIFT), red with no network.
 
 ### Later
+- [ ] **SD card, more of it:** the robots' avatars as short looping clips on HOME (the built-in avatars stay, for a card-less RITA); an animated boot splash; a screensaver of DREAM's clips when RITA's been idle a while; her WiFi and robot list in a `rita.json` on the card; a log of what she sent and what each robot answered; music through the speaker.
+- [ ] DREAM's mirror from `scripts/dream.py` and `dream.exe` too (today it's her page: `app.py`, the browser and DREAM-Controller.exe).
 - [ ] Host the fleet herself when there's no RIFT (a place on the WiFi ladder).
 - [ ] RIFT's music together, the mission log and the robots' conversations.
 - [ ] Start a robot's MIND mode from her (through its PC controller).
@@ -121,6 +124,8 @@ RITA is a 3.5" touch screen that shows the DREAM Robotics fleet and talks to it 
 | ST7796 screen (HSPI) | SCLK 14, MOSI 13, MISO 12, DC 2, CS 15, backlight 27 |
 | XPT2046 touch (same bus) | CS 33, IRQ 36 |
 | RGB LED (active low) | R 4, G 16, B 17 |
+| microSD (VSPI, its own bus) | SCK 18, MISO 19, MOSI 23, CS 5 |
+| Speaker connector (DAC 2, through the board's amplifier) | 26 |
 
 Negative colours? Flip `PANEL_INVERT` in `scripts/esp32/display.h`. Red and blue swapped? `PANEL_BGR`.
 
@@ -141,12 +146,38 @@ Negative colours? Flip `PANEL_INVERT` in `scripts/esp32/display.h`. Red and blue
 
 ---
 
+## The SD card
+
+<details open>
+<summary><b>DREAM on RITA (optional)</b></summary>
+
+With a microSD card RITA can show what DREAM is showing. Run `make_sdcard.bat` (needs ffmpeg): it converts DREAM's clips (`../DREAM/videos`) into `sdcard/dream/` as MJPEG (480 x 270, 15 fps, back-to-back JPEGs: an ESP32 has no video decoder, but it draws JPEGs) with a frame index each. Copy everything in `sdcard/` onto a FAT32 card and put it in RITA. Details: [`sdcard/README.md`](sdcard/README.md).
+
+Tap DREAM on HOME. DREAM's page tells her own app which clip it started and when; DREAM serves that on a small plain-HTTP, read-only mirror (port 5015, `DREAM/scripts/dream_mirror.py`), because her dashboard is HTTPS and every TLS handshake costs an ESP32 about a second. RITA asks twice a second and draws the frame DREAM is on, so they move together however late RITA joined. When DREAM speaks, RITA streams the line (16 kHz, 8-bit) to the DAC on the speaker connector, from as far in as DREAM already is: a speaker there, or a headphone jack. SOUND turns it off and she remembers.
+
+</details>
+
+---
+
 ## On the PC
 
 <details open>
 <summary><b>See her screens with no board</b></summary>
 
-`preview.bat` (or `preview.sh`) runs her real `esp32.ino` on the PC, drawn by the real LovyanGFX, with a pretend WiFi and a pretend fleet behind it. The window is her screen, the mouse is your finger and the console prints every web call she makes. `preview.bat --shots` writes these pictures to `images/screens`, and fails if holding a pad button doesn't drive, letting go doesn't stop, or a robot has more buttons than DRIVE shows.
+`preview.bat` (or `preview.sh`) builds `build/preview/rita_preview.exe`: RITA emulated in C++ on the PC. It runs her real `esp32.ino`, drawn by the real LovyanGFX, with a pretend WiFi and a pretend fleet behind it, and the repo's `sdcard/` folder as her SD card (so DREAM's clips play here too, from a pretend DREAM that talks, idles and sleeps in turn). The window is her screen, the mouse is your finger and the console prints every web call she makes.
+
+| Key | Does |
+|---|---|
+| **1-9, 0** | HOME: open WHIP ... ARIA, DREAM |
+| **W A S D** / arrows | hold to drive (the pad), let go to stop |
+| **Q / E** | crab (WHIP) or turn on the spot (NORA) |
+| **Space** | STOP |
+| **T** | WASD / TANK |
+| **R** | RIFT: ask and do |
+| **M** | DREAM's sound on / off |
+| **Backspace** | back |
+| **Esc** | quit |
+ `preview.bat --shots` writes these pictures to `images/screens`, and fails if holding a pad button doesn't drive, letting go doesn't stop, or a robot has more buttons than DRIVE shows.
 
 It needs g++ and SDL2 (Windows: MSYS2's mingw64), Pillow for the pictures, and the libraries `flash.bat` installs.
 
@@ -162,6 +193,10 @@ It needs g++ and SDL2 (Windows: MSYS2's mingw64), Pillow for the pictures, and t
   <tr>
     <td><img src="images/screens/08_rift_ask_do.png" width="400" alt="RIFT: ask and do"></td>
     <td><img src="images/screens/09_let_rita_move.png" width="400" alt="Let RITA move NORA?"></td>
+  </tr>
+  <tr>
+    <td><img src="images/screens/14_dream.png" width="400" alt="DREAM on RITA: her sleeping clip from the SD card"></td>
+    <td></td>
   </tr>
 </table>
 </details>
