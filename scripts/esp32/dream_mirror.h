@@ -21,6 +21,7 @@
 #include <SPI.h>
 #include <HTTPClient.h>
 #include "driver/dac_continuous.h"
+#include "talk_bf.h"   // the fleet's Brainfuck phrasebook (RIFT/Fleet/brainfuck_talk.py)
 
 #define SD_SCK  18
 #define SD_MISO 19
@@ -99,11 +100,44 @@ String voiceUrl;                   // the next line to play (set by say(), taken
 volatile bool voiceStop = false;
 String voiceId;                    // the line playing / last played
 bool sound = true;                 // the SOUND button on DREAM's screen
+volatile bool playing = false;     // her speaker is busy (DREAM's voice, or a phrase)
+volatile int chirpU = -1;          // a Brainfuck phrase to beep next (-1: none)
+const uint8_t TALK_VOICE_PCT = 118;   // her voice: a little higher than the fleet's
+
+// One phrase: each symbol of its program a square-wave tone (bfToneHz/bfToneMs), 16 kHz into the DAC
+void beepPhrase(int u) {
+  static uint8_t buf[512];
+  for (uint16_t n = 0;; n++) {
+    const char c = talkSymbol(u, n);
+    if (!c) break;
+    const uint32_t hz = (uint32_t)bfToneHz(c) * TALK_VOICE_PCT / 100;
+    uint32_t samples = 16000UL * bfToneMs(c) / 1000, gap = 16000UL * TALK_GAP_MS / 1000, i = 0;
+    const uint32_t half = hz ? 8000 / hz : 0;
+    while (samples + gap > 0) {
+      size_t k = 0;
+      for (; k < sizeof(buf) && samples + gap > 0; k++) {
+        if (samples) { buf[k] = half && (i++ / half) % 2 ? 170 : 86; samples--; }
+        else { buf[k] = 128; gap--; }
+      }
+      size_t loaded = 0;
+      dac_continuous_write(dac, buf, k, &loaded, 200);
+    }
+  }
+}
 
 void voiceLoop(void*) {
   static uint8_t chunk[1024];
   for (;;) {
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    if (chirpU >= 0) {                     // a Brainfuck phrase, when she isn't speaking for DREAM
+      playing = true;
+      dac_continuous_enable(dac);
+      beepPhrase(chirpU);
+      dac_continuous_disable(dac);
+      chirpU = -1;
+      playing = false;
+      continue;
+    }
     xSemaphoreTake(voiceLock, portMAX_DELAY);
     const String url = voiceUrl;
     xSemaphoreGive(voiceLock);
@@ -115,6 +149,7 @@ void voiceLoop(void*) {
       WiFiClient* s = http.getStreamPtr();
       int left = http.getSize();          // -1: until the connection closes
       dac_continuous_enable(dac);
+      playing = true;
       while (!voiceStop && (left > 0 || left == -1) && (http.connected() || s->available())) {
         const int n = s->readBytes(chunk, left > 0 ? min(left, (int)sizeof(chunk)) : sizeof(chunk));
         if (n <= 0) break;
@@ -126,6 +161,7 @@ void voiceLoop(void*) {
       size_t loaded = 0;
       dac_continuous_write(dac, chunk, sizeof(chunk), &loaded, 200);
       dac_continuous_disable(dac);
+      playing = false;
     }
     http.end();
   }
@@ -157,5 +193,13 @@ void say(const String& base, const String& id, uint32_t ms) {
   xTaskNotifyGive(voiceTask);
 }
 void hush() { voiceStop = true; voiceId = ""; }
+
+// A Brainfuck phrase on her speaker. False if it's busy (DREAM's voice) or there's no DAC.
+bool chirp(int u) {
+  if (!dac || playing || chirpU >= 0 || u < 0 || u >= TALK_UTTERANCES) return false;
+  chirpU = u;
+  xTaskNotifyGive(voiceTask);
+  return true;
+}
 
 }  // namespace mirror

@@ -103,6 +103,7 @@ unsigned long tryStart = 0, lastLook = 0, lostSince = 0, lastRegister = 0;
 bool lookScan = false;                // the scan running is the once-a-minute look, not a start-over
 bool hubIsRift = false;               // the hub answers /fleet (RIFT): ask and do work
 bool hosting = false;                 // she's the network ("RITA") and its fleet list
+bool talkOn = true;                   // TALK on HOME: she joins the fleet's Brainfuck conversations
 
 String hubUrl() { return String("http://") + WiFi.gatewayIP().toString() + ":" + HUB_PORT; }
 String netName() { return hosting ? String(AP_SSID) : rank >= 0 && rank < LADDER_N ? String(LADDER[rank]) : String(""); }
@@ -301,7 +302,7 @@ void registerWithHub() {
   http.begin(hubUrl() + "/register");
   http.setTimeout(2000);
   http.addHeader("Content-Type", "application/x-www-form-urlencoded");
-  http.POST("name=RITA&type=remote&capabilities=remote");
+  http.POST(String("name=RITA&type=remote&capabilities=remote") + (talkOn ? ",talk:80" : ""));   // talk: RIFT's conversations
   http.end();
 }
 
@@ -552,6 +553,7 @@ void webStatus() {
   d["doing"] = doingNow();
   d["toast"] = toast.length() && millis() <= toastUntil ? toast : String("");
   d["hosting"] = hosting;
+  d["talk"] = talkOn;
   d["rift"] = hubIsRift;
   d["net"] = netState == NET_UP ? netName() : String("");
   d["ip"] = hosting ? String("192.168.4.1") : WiFi.localIP().toString();
@@ -582,6 +584,16 @@ void webBegin() {
   web.on("/app.js", []() { web.send_P(200, "application/javascript", WEB_APP); });
   web.on("/avatar.jpg", []() { web.send_P(200, "image/jpeg", (const char*)SPLASH_JPG, sizeof(SPLASH_JPG)); });
   web.on("/api/status", webStatus);
+  // RIFT's conversations: GET /chirp?u=<n> beeps that Brainfuck phrase on her speaker (talk_bf.h).
+  // Quiet when TALK is off, or while her speaker plays something else (DREAM's voice): 409.
+  web.on("/chirp", []() {
+    const int u = web.hasArg("u") ? web.arg("u").toInt() : -1;
+    if (u < 0 || u >= TALK_UTTERANCES) { web.send(400, "application/json", "{\"ok\":false,\"error\":\"u: 0-16\"}"); return; }
+    if (!talkOn) { web.send(409, "application/json", "{\"ok\":false,\"error\":\"talk is off\"}"); return; }
+    if (!mirror::chirp(u)) { web.send(409, "application/json", "{\"ok\":false,\"error\":\"her speaker is busy\"}"); return; }
+    say(String("RITA: ") + TALK_TEXT[u], C_ACCENT, 3000);   // what the program prints
+    web.send(200, "application/json", "{\"ok\":true}");
+  });
   web.begin();
   webUp = true;
 }
@@ -1250,6 +1262,7 @@ void drawHome() {
   drawBar("RITA", false);
   button(128, 4, 84, BAR - 8, "STATS", C_ACCENT, "stats");
   button(218, 4, 64, BAR - 8, "WEB", C_ACCENT, "qr");
+  button(288, 4, 64, BAR - 8, "TALK", C_ACCENT, "talk", talkOn);   // the fleet's Brainfuck chatter, on her speaker
   for (int r = 0; r < ROSTER_N && r < GRID_COLS * 2; r++) {
     const int cx = (r % GRID_COLS) * CELL_W + CELL_W / 2;
     const int top = BAR + (r / GRID_COLS) * CELL_H + 10;
@@ -1490,6 +1503,7 @@ String viewSig() {
   for (int i = 0; i < botCount; i++) s += "|" + bots[i].name + "," + bots[i].type + "," + bots[i].ip + "," + bots[i].busy;
   if (screen == SCR_CTRL && cur >= 0 && ROSTER[cur].kind == K_DREAM) s += "|" + dreamState + dreamAsleep + dreamClipHere + dreamClip;
   if (screen == SCR_QR) s += "|qr" + webUrl();
+  s += talkOn ? "|t" : "|q";
   if (screen == SCR_STATS || screen == SCR_STAT1) {
     for (int r = 0; r < ROSTER_N; r++) s += "|" + String(stats[r].on) + stats[r].v[0] + stats[r].v[1] + stats[r].v[2] + stats[r].v[3] + stats[r].v[4];
     if (screen == SCR_STAT1) { s += statCount; for (int i = 0; i < statCount; i++) s += statVal[i]; }
@@ -1700,6 +1714,13 @@ void tap(const String& id) {
   else if (id == "back" && screen == SCR_STATS) { screen = SCR_HOME; lastRefresh = 0; }
   else if (id == "back" && screen == SCR_QR) { screen = SCR_HOME; lastRefresh = 0; }
   else if (id == "qr") { screen = SCR_QR; }
+  else if (id == "talk") {   // she joins the fleet's Brainfuck conversations, or keeps quiet
+    talkOn = !talkOn;
+    prefs.begin("rita", false); prefs.putBool("talk", talkOn); prefs.end();
+    say(talkOn ? "TALK on: she chats with the fleet" : "TALK off: she keeps quiet", C_DIM);
+    lastRegister = 0;        // tell the hub at once (talk:80 on or off)
+    if (talkOn) mirror::chirp(0);   // "hi"
+  }
   else if (id == "stats") { screen = SCR_STATS; lastStat = 0; }
   else if (id.startsWith("st:")) { statSel = id.substring(3).toInt(); statPage = 0; statCount = 0; screen = SCR_STAT1; draw(); statPoll(statSel, true); lastStat = millis(); }
   else if (id == "stmore") { statPage++; }
@@ -1769,11 +1790,26 @@ void tap(const String& id) {
 // finger lifts. Resistive touch drops out for a moment now and then, so "lifted" means no touch for
 // RELEASE_MS; a finger sliding off the pad button lets go too.
 const unsigned long RELEASE_MS = 120;
+// On a power bank: the screen dims after DIM_AFTER_MS without a touch (not while a camera or DREAM's
+// screen is up); the first touch only wakes it, so nothing gets pressed by accident.
+const unsigned long DIM_AFTER_MS = 120000;
+const uint8_t BRIGHT = 200, DIMMED = 22;
+bool dimmed = false;
+unsigned long lastTouchMs = 0;
+
 void touchLoop() {
-  static bool wasDown = false;
+  static bool wasDown = false, waking = false;
   static unsigned long lastDown = 0;
   int32_t x, y;
   bool down = lcd.getTouch(&x, &y);
+  const bool watching = screen == SCR_CTRL && cur >= 0 && (camView || ROSTER[cur].kind == K_DREAM);
+  if (down) lastTouchMs = millis();
+  if (!dimmed && !watching && millis() - lastTouchMs > DIM_AFTER_MS) { lcd.setBrightness(DIMMED); dimmed = true; }
+  if (down && dimmed) { lcd.setBrightness(BRIGHT); dimmed = false; waking = true; }   // this touch only wakes her
+  if (waking) {
+    if (!down) waking = false;
+    return;
+  }
   if (down) {
     lastDown = millis();
     if (!wasDown) {
@@ -1850,7 +1886,7 @@ void setup() {
   calibrate(lcd.getTouch(&x, &y));   // held at boot: calibrate again
   mirror::begin();                    // an SD card with DREAM's clips, if there is one
   mirror::voiceBegin();               // her voice on the speaker connector
-  prefs.begin("rita", true); mirror::sound = prefs.getBool("sound", true); prefs.end();
+  prefs.begin("rita", true); mirror::sound = prefs.getBool("sound", true); talkOn = prefs.getBool("talk", true); prefs.end();
 
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);

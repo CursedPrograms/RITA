@@ -27,7 +27,8 @@ async function refresh() {
   const her = $('her');
   her.textContent = '';
   for (const [k, v] of [['Address', d.ip], ['Up', uptime(d.uptime_s)], ['Free memory', `${Math.round(d.heap / 1024)} KB`],
-                        ['SD card', d.sd ? 'yes: DREAM\'s clips' : 'none'], ['Sound', d.sound ? 'on' : 'off']]) {
+                        ['SD card', d.sd ? 'yes: DREAM\'s clips' : 'none'], ['Sound', d.sound ? 'on' : 'off'],
+                        ['Talk', d.talk ? 'on: she chats with the fleet in Brainfuck' : 'off']]) {
     const dt = document.createElement('dt'); dt.textContent = k;
     const dd = document.createElement('dd'); dd.textContent = v;
     her.append(dt, dd);

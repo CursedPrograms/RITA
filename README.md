@@ -35,8 +35,9 @@ RITA is a 3.5" touch screen that shows the DREAM Robotics fleet and talks to it 
 
 **Colours:** `colour_scheme.xml` comes from her avatar: navy, cream, burnt orange and CRT teal, on her site and her screen.
 
-## Related Projects
+---
 
+## Related Projects
 
 <table>
   <tr>
@@ -62,13 +63,15 @@ RITA is a 3.5" touch screen that shows the DREAM Robotics fleet and talks to it 
 
 ## Overview
 
+**Website: <https://cursedprograms.github.io/RITA/>**
+
 <details open>
 <summary><b>Overview</b></summary>
 
 ### What she does
 - [x] **Splash**: her TV-head avatar for 5 s at power-up.
 - [x] **Home**: every robot she drives, its round avatar with its name under it: WHIP, NORA, MILA, NIKA, KIDA-00, KIDA-01, IDA, ARM, ARIA and DREAM. Each avatar has a dot like a chatroom's: green when the robot is on the network, red (and the avatar dimmed) when it isn't.
-- [x] **A controller for each robot**: tap one and drive it, talking to the robot directly (its own web API, the one its PC controller uses). Hold a pad button to drive, let go and it stops. Each robot gets its own pad and buttons:
+- [x] **A controller for each robot**: tap one and drive him or her, talking to the robot directly (their own web API, the one their PC controller uses). Hold a pad button to drive, let go and it stops. Each robot gets its own pad and buttons:
   - **WHIP** (hexapod): W / A / S / D with curves, crab left / right, HELLO, DANCE, REST, AUTO, CRAB - / + (his crab offset, a degree a press).
   - **ARIA** (drone): her state, battery and network, and the fleet's phrases. No flying: she flies from her app or a gamepad.
   - **NORA** (mecanum): A / D slide, diagonals slide, TURN L / R, AUTO, UV, music, her wheel lock.
@@ -77,7 +80,7 @@ RITA is a 3.5" touch screen that shows the DREAM Robotics fleet and talks to it 
   - **Cameras** (CAM): KIDA-00's camera as her own HUD shows it, with what she sees marked; KIDA-01's two cameras (CAM 0 / CAM 1: cam 0 has her YOLO boxes while her inference is on), each beside a small pad so you can drive while you watch; and DREAM's camera with her detections (people, objects, faces). They're MJPEG streams, read a little at a time so RITA never stalls.
   - **ARM** (no WiFi): driven from her PC over USB, so RITA just says so.
   - **DREAM**: a small mirror of her. RITA plays the clip DREAM is showing, from the SD card and from the same frame, so the two screens move together, and DREAM's voice comes out of the speaker connector (SOUND turns it off). Without an SD card RITA shows DREAM's avatar and what she's doing. See [The SD card](#the-sd-card).
-- [x] **STATS** (on HOME): every robot's sensors in one table, TEMP, HUMIDITY, DISTANCE and BATTERY, from each robot's own `/status`, asked one robot at a time so she never stalls. The robots all name these differently (`temp`, `temperature`, `hum`, `distance_cm`, `range_cm`, `distances_cm.front`, `battery_pct`, `battery_v` ...), so she finds them by name, and new sensors show up by themselves. Tap a robot for everything he or she reports.
+- [x] **STATS** (on HOME): every robot's sensors in one table, TEMP, HUMIDITY, DISTANCE, BATTERY and WIFI (his or her signal), from each robot's own `/status`, asked one robot at a time so she never stalls. The robots all name these differently (`temp`, `temperature`, `hum`, `distance_cm`, `range_cm`, `distances_cm.front`, `battery_pct`, `battery_v` ...), so she finds them by name, and new sensors show up by themselves. Tap a robot for everything he or she reports.
 - [x] **Her own web page** (http://rita.local, or her IP; http://192.168.4.1 while she hosts): in step with her, it shows what's on her screen right now and what she's doing (the robot she's driving, the pad button held, the camera, DREAM's state, her last message), her network, and the fleet with its sensors and an **Open site** button for each robot's own site (DREAM: her dashboard). It refreshes every second; driving stays on her touchscreen. The page is plain files in `scripts/esp32/web/` (`index.html`, `style.css`, `app.js`); `scripts/make_web.py` embeds them, and `flash.bat` runs it before every compile.
 - [x] **QR codes**: WEB on HOME shows one to her page (and, while she hosts, one that joins her WiFi "RITA" first). Each robot's STATS page has one to his or her own site.
 - [x] **She hosts when she has to**: her rung on the fleet's ladder is above NORA. With RIFT, DREAM, NINA, TINA and the controllers all off, she hosts "RITA" (192.168.4.1, up to 10 devices, LED blue) with the fleet list on :5000, so the robots join her; when a higher network is back she hands over and joins it.
@@ -86,6 +89,8 @@ RITA is a 3.5" touch screen that shows the DREAM Robotics fleet and talks to it 
 - [x] **The fleet's WiFi ladder**: her rung is under the controllers and above NORA. She joins the highest network she can see above her (RIFT, DREAM, NINA, TINA, the controllers); with none, she hosts "RITA" herself (see below). She looks again every minute and moves up when a higher one is back. She registers with the hub as `RITA` (type `remote`).
 - [x] **RGB LED**, in colour (PWM): the network as a slow breath, green on RIFT's, amber on another (the list works, ask and do need RIFT), blue while she hosts, red with none; red blinking while the robot she's driving doesn't answer; on DREAM's screen it follows her (an orange pulse talking, teal listening, violet thinking, a dim blue breath asleep); white flashing while she updates over WiFi.
 - [x] **KIDA-00's camera servo**: a CAM slider under her pad and under her camera picture; drag it and the camera follows.
+- [x] **TALK** (on HOME): she joins the fleet's conversations in Brainfuck, each phrase beeped on her speaker in her own voice (a little higher than the fleet's), whenever she isn't playing DREAM's voice. RIFT calls `/chirp?u=<n>` on her; she registers `talk:80` while TALK is on. Tap it off and she keeps quiet; she remembers which.
+- [x] **Made for a power bank**: the screen dims after two minutes without a touch (not while you watch a camera or DREAM), and the first touch only wakes it, so nothing gets pressed by accident.
 
 ### Later
 - [ ] **SD card, more of it:** the robots' avatars as short looping clips on HOME (the built-in avatars stay, for a card-less RITA); an animated boot splash; a screensaver of DREAM's clips when RITA's been idle a while; her WiFi and robot list in a `rita.json` on the card; a log of what she sent and what each robot answered; music through the speaker.
@@ -97,7 +102,7 @@ RITA is a 3.5" touch screen that shows the DREAM Robotics fleet and talks to it 
 
 ---
 
-## Prerequisites
+## Hardware
 
 <details>
 <summary><b>Hardware</b></summary>
@@ -106,6 +111,8 @@ RITA is a 3.5" touch screen that shows the DREAM Robotics fleet and talks to it 
 | :--- | :--- |
 | **ESP32-3248S035R** | The 3.5" "Cheap Yellow Display": ESP32, 480x320 ST7796 screen, XPT2046 resistive touch, RGB LED, SD slot, speaker connector |
 | **USB cable** | Power and flashing (micro-USB or USB-C, depending on the board revision) |
+| **Power bank** | Any USB power bank: what she runs on in your hand (her screen dims when idle to make it last) |
+| **Speaker** (optional) | On the speaker connector: DREAM's voice and her Brainfuck talk (or a headphone jack there) |
 
 </details>
 
@@ -117,9 +124,7 @@ RITA is a 3.5" touch screen that shows the DREAM Robotics fleet and talks to it 
 
 </details>
 
----
-
-## Pinouts
+### Pinout
 
 <details>
 <summary><b>ESP32-3248S035R</b></summary>
@@ -138,7 +143,7 @@ Negative colours? Flip `PANEL_INVERT` in `scripts/esp32/display.h`. Red and blue
 
 ---
 
-## How to Run
+## Quick start
 
 <details open>
 <summary><b>View How to Run</b></summary>
@@ -146,7 +151,7 @@ Negative colours? Flip `PANEL_INVERT` in `scripts/esp32/display.h`. Red and blue
 1. Copy `scripts/esp32/secrets.example.h` to `secrets.h` and put in the fleet's WiFi passwords (the same as every robot's).
 2. Flash her: `flash.bat` (on a fresh PC it installs the Arduino command line tool, the ESP32 board package and her libraries by itself, then finds the port, compiles and flashes, talking you through it), or open `scripts/esp32/esp32.ino` in the Arduino IDE with **ESP32 Dev Module** and the **Minimal SPIFFS** partition scheme (two app slots: what lets her update over WiFi).
 3. On the first boot, tap each corner as it lights up (touch calibration, kept in flash). Hold the screen while she starts to calibrate again.
-4. She finds the fleet's network by herself. Tap a robot to see it and drive it.
+4. She finds the fleet's network by herself. Tap a robot to see and drive them.
 5. After that, no cable or BOOT button: `flash.bat -Ota rita.local` (or her IP) sends new firmware over WiFi, to a RITA on the same network. Her password is `ROBOT_PIN`. This board doesn't reset into its flashing mode by itself, so for a cable flash hold BOOT while the screen flickers, until it goes black.
 </details>
 
@@ -219,6 +224,12 @@ It needs g++ and SDL2 (Windows: MSYS2's mingw64), Pillow for the pictures, and t
 
 ---
 
+---
+
+<!-- DREAM-ECOSYSTEM:START -->
+
+---
+
 <div align="center">&copy; Cursed Entertainment 2026</div>
 
 <div align="center">
@@ -229,7 +240,6 @@ It needs g++ and SDL2 (Windows: MSYS2's mingw64), Pillow for the pictures, and t
 
 ---
 
-<!-- DREAM-ECOSYSTEM:START -->
 ## The DREAM Robotics ecosystem
 
 **Minds** — [DREAM](https://github.com/CursedPrograms/DREAM) companion · [TINA](https://github.com/CursedPrograms/TINA) engineer · [NINA](https://github.com/CursedPrograms/NINA) caretaker · [RIFT](https://github.com/CursedPrograms/RIFT) fleet hub · [LYCEA](https://github.com/CursedPrograms/LYCEA) training school  

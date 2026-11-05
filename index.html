@@ -55,7 +55,6 @@
 </header>
 
 <main>
-
 <section id="overview">
   <div class="wrap">
     <h2>Overview</h2>
@@ -73,8 +72,8 @@
       </div>
       <div class="card">
         <span class="k">Ask</span>
-        <h4>What it says</h4>
-        <p>Tap a robot: its mode, whether it's moving, its music and its distances, straight from RIFT's relay.</p>
+        <h4>What they say</h4>
+        <p>Tap a robot: her or his mode, whether they're moving, their music and distances, straight from RIFT's relay.</p>
       </div>
       <div class="card">
         <span class="k">Do</span>
@@ -99,7 +98,7 @@
       <div class="card">
         <span class="k">Stats</span>
         <h4>The fleet&rsquo;s sensors</h4>
-        <p>Temperature, humidity, distance, battery and WiFi signal for every robot in one table, from each one&rsquo;s own status. Tap one for everything it reports, and a QR code to its own site.</p>
+        <p>Temperature, humidity, distance, battery and WiFi signal for every robot in one table, from each one&rsquo;s own status. Tap one for everything he or she reports, and a QR code to their own site.</p>
       </div>
       <div class="card">
         <span class="k">Cameras</span>
@@ -121,6 +120,16 @@
         <h4>Her LED, in colour</h4>
         <p>A slow breath for the network (green RIFT, amber another, blue hosting, red none), red blinking when a robot doesn&rsquo;t answer, and DREAM&rsquo;s mood on her screen.</p>
       </div>
+      <div class="card">
+        <span class="k">Talk</span>
+        <h4>Brainfuck, out loud</h4>
+        <p>TALK on HOME: she joins the fleet&rsquo;s conversations, each phrase beeped on her speaker in her own voice, whenever she isn&rsquo;t playing DREAM&rsquo;s. Tap it off and she keeps quiet.</p>
+      </div>
+      <div class="card">
+        <span class="k">Power</span>
+        <h4>Made for a power bank</h4>
+        <p>Her screen dims after two minutes without a touch (not while you watch a camera or DREAM), and the first touch only wakes it, so nothing gets pressed by accident.</p>
+      </div>
     </div>
   </div>
 </section>
@@ -134,6 +143,8 @@
       <li><span class="n">02</span> ST7796 screen and XPT2046 resistive touch (on the board)</li>
       <li><span class="n">03</span> RGB LED (on the board)</li>
       <li><span class="n">04</span> A USB cable</li>
+      <li><span class="n">05</span> A USB power bank: what she runs on in your hand</li>
+      <li><span class="n">06</span> A speaker or headphone jack on the speaker connector (optional)</li>
     </ol>
     <div class="table-wrap">
       <table>
@@ -150,6 +161,14 @@
   </div>
 </section>
 
+<section id="stay">
+  <div class="wrap">
+    <h2>Stay close</h2>
+    <h3 class="title">The robots keep near you</h3>
+    <p>RITA sends the fleet's ESP-NOW beacon once she's on a fleet network. Press STAY on NORA's or WHIP's page and they keep near her, in your hand, stopping about a metre away. Her signal shows how far, not which way, so they try a direction, keep going if it gets stronger and turn if it doesn't. On the way they go round things: they slow down near something and sidestep round it toward open space, still heading for her, and back out of corners. It's been tested in simulation (round a wall in 47 of 50 pretend rooms, no bumps), not on the floor yet.</p>
+  </div>
+</section>
+
 <section id="quickstart">
   <div class="wrap">
     <h2>Quick start</h2>
@@ -161,14 +180,6 @@
       <li>She finds the fleet by herself. Tap a robot.</li>
       <li>From then on, no cable: <code>flash.bat -Ota rita.local</code> updates her over WiFi.</li>
     </ol>
-  </div>
-</section>
-
-<section id="stay">
-  <div class="wrap">
-    <h2>Stay close</h2>
-    <h3 class="title">The robots keep near you</h3>
-    <p>RITA sends the fleet's ESP-NOW beacon once she's on a fleet network. Press STAY on NORA's or WHIP's page and they keep near her, in your hand, stopping about a metre away. Her signal shows how far, not which way, so they try a direction, keep going if it gets stronger and turn if it doesn't. On the way they go round things: they slow down near something and sidestep round it toward open space, still heading for her, and back out of corners. It's been tested in simulation (round a wall in 47 of 50 pretend rooms, no bumps), not on the floor yet.</p>
   </div>
 </section>
 

@@ -7,6 +7,12 @@
 #include <cstring>
 #include <string>
 #include <vector>
+#ifndef pgm_read_byte
+#define pgm_read_byte(p) (*(const uint8_t*)(p))
+#endif
+inline void tone(int, unsigned int, unsigned long = 0) {}
+inline void noTone(int) {}
+#include "talk_bf.h"   // the fleet's phrasebook, as on the board
 
 #ifndef RITA_SDCARD
 #define RITA_SDCARD "sdcard"
@@ -82,5 +88,6 @@ void say(const String& base, const String& id, uint32_t ms) {
   printf("(DREAM's voice on the speaker: %s/speech/%s from %u ms)\n", base.c_str(), id.c_str(), (unsigned)ms);
 }
 void hush() { voiceId = ""; }
+bool chirp(int u) { printf("(RITA beeps Brainfuck phrase %d)\n", u); return true; }
 
 }  // namespace mirror
