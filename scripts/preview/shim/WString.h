@@ -26,6 +26,7 @@ class String {
   }
 
   const char* c_str() const { return s.c_str(); }
+  void toCharArray(char* buf, unsigned size) const { if (!size) return; strncpy(buf, s.c_str(), size - 1); buf[size - 1] = 0; }
   unsigned length() const { return (unsigned)s.size(); }
   char operator[](unsigned i) const { return i < s.size() ? s[i] : 0; }
   bool concat(const char* c) { s += c; return true; }

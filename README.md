@@ -31,7 +31,9 @@ RITA is a 3.5" touch screen that shows the DREAM Robotics fleet and talks to it 
 
 ---
 
-**STAY CLOSE:** RITA sends the fleet's ESP-NOW beacon once she's on a fleet network, so robots can tell how near she is. Her STAY button on NORA's and WHIP's pages makes them keep near her, about a metre away, going round things on the way: they slow down near something and sidestep round it toward open space (NORA's mecanum wheels, WHIP's crab), still heading for her, and back out of corners. Tested in simulation (round a wall in 47 of 50 pretend rooms, no bumps); not on the floor yet.
+**How far away:** RITA hears the fleet's beacons, over ESP-NOW and Bluetooth LE (`fleet_near.h`, `fleet_near_ble.h`, the same files as NORA and WHIP). On DRIVE, beside the robot's avatar, she shows about how far it is (from its signal strength: about -45 dBm at 1 m, so a rough figure; walls and how you hold her change it), whether it's coming closer or going away, and which radio heard it. The KIDAs are heard over Bluetooth LE only. IDA has no radio of her own, and DREAM and ARM have no beacon.
+
+**STAY CLOSE:** RITA sends the fleet's beacon ("hand"), over ESP-NOW and Bluetooth LE, once she's on a fleet network, so robots can tell how near she is. Her STAY button on NORA's and WHIP's pages makes them keep near her, about a metre away, going round things on the way: they slow down near something and sidestep round it toward open space (NORA's mecanum wheels, WHIP's crab), still heading for her, and back out of corners. Tested in simulation (round a wall in 47 of 50 pretend rooms, no bumps); not on the floor yet.
 
 **Colours:** `colour_scheme.xml` comes from her avatar: navy, cream, burnt orange and CRT teal, on her site and her screen.
 
@@ -87,7 +89,7 @@ RITA is a 3.5" touch screen that shows the DREAM Robotics fleet and talks to it 
 - [x] **RIFT too**: from a controller, RIFT: ASK / DO shows what the robot says about itself through RIFT and everything RIFT can do with it, as 1 s timed moves that ask *"Let RITA move NORA?"* first.
 - [x] **Safety stays with the robots**: their own stops (walls, tilt, the wheel locks) still hold. Their PIN (`ROBOT_PIN` in `secrets.h`) signs RITA in as a controller; unlocking wheels is its own button (UNLOCK).
 - [x] **The fleet's WiFi ladder**: her rung is under the controllers and above NORA. She joins the highest network she can see above her (RIFT, DREAM, NINA, TINA, the controllers); with none, she hosts "RITA" herself (see below). She looks again every minute and moves up when a higher one is back. She registers with the hub as `RITA` (type `remote`).
-- [x] **RGB LED**, in colour (PWM): the network as a slow breath, green on RIFT's, amber on another (the list works, ask and do need RIFT), blue while she hosts, red with none; red blinking while the robot she's driving doesn't answer; on DREAM's screen it follows her (an orange pulse talking, teal listening, violet thinking, a dim blue breath asleep); white flashing while she updates over WiFi.
+- [x] **RGB LED**, in colour (PWM): the network as a slow breath, green on RIFT's, amber on another (the list works, ask and do need RIFT), blue while she hosts, red with none; red blinking while the robot she's driving doesn't answer; on DREAM's screen it follows her (an orange pulse talking, teal listening, violet thinking, a dim blue breath asleep).
 - [x] **KIDA-00's camera servo**: a CAM slider under her pad and under her camera picture; drag it and the camera follows.
 - [x] **TALK** (on HOME): she joins the fleet's conversations in Brainfuck, each phrase beeped on her speaker in her own voice (a little higher than the fleet's), whenever she isn't playing DREAM's voice. RIFT calls `/chirp?u=<n>` on her; she registers `talk:80` while TALK is on. Tap it off and she keeps quiet; she remembers which.
 - [x] **Made for a power bank**: the screen dims after two minutes without a touch (not while you watch a camera or DREAM), and the first touch only wakes it, so nothing gets pressed by accident.
@@ -149,10 +151,10 @@ Negative colours? Flip `PANEL_INVERT` in `scripts/esp32/display.h`. Red and blue
 <summary><b>View How to Run</b></summary>
 
 1. Copy `scripts/esp32/secrets.example.h` to `secrets.h` and put in the fleet's WiFi passwords (the same as every robot's).
-2. Flash her: `flash.bat` (on a fresh PC it installs the Arduino command line tool, the ESP32 board package and her libraries by itself, then finds the port, compiles and flashes, talking you through it), or open `scripts/esp32/esp32.ino` in the Arduino IDE with **ESP32 Dev Module** and the **Minimal SPIFFS** partition scheme (two app slots: what lets her update over WiFi).
+2. Flash her: `flash.bat` (on a fresh PC it installs the Arduino command line tool, the ESP32 board package and her libraries by itself, then finds the port, compiles and flashes, talking you through it), or open `scripts/esp32/esp32.ino` in the Arduino IDE with **ESP32 Dev Module** and the **Huge APP (3MB No OTA)** partition scheme, like NORA and WHIP: one big slot, room for Bluetooth LE (2.1 MB today).
 3. On the first boot, tap each corner as it lights up (touch calibration, kept in flash). Hold the screen while she starts to calibrate again.
 4. She finds the fleet's network by herself. Tap a robot to see and drive them.
-5. After that, no cable or BOOT button: `flash.bat -Ota rita.local` (or her IP) sends new firmware over WiFi, to a RITA on the same network. Her password is `ROBOT_PIN`. This board doesn't reset into its flashing mode by itself, so for a cable flash hold BOOT while the screen flickers, until it goes black.
+5. New firmware always goes over the cable: with one big app slot there's no room for an update over WiFi. This board doesn't reset into its flashing mode by itself, so hold BOOT while the screen flickers, until it goes black.
 </details>
 
 ---

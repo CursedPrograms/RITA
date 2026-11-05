@@ -36,7 +36,13 @@
 */
 
 #include <WiFi.h>
-#include "fleet_beacon.h"
+#include "fleet_near.h"       // the fleet's ESP-NOW beacon: her "hand", and everyone else's (how far each robot is)
+#ifndef RITA_NEAR_BLE
+#define RITA_NEAR_BLE 1             // ...and over Bluetooth LE: the KIDAs only beacon there
+#endif
+#if RITA_NEAR_BLE
+#include "fleet_near_ble.h"
+#endif
 #include <HTTPClient.h>
 #include <WebServer.h>   // the fleet list on :5000 while she hosts
 #include "esp_wifi.h"
@@ -49,7 +55,6 @@
 #include "dream_mirror.h"   // DREAM's clips from the SD card and her voice: optional (sdcard/)
 #include "camera.h"         // the KIDAs' and DREAM's cameras (MJPEG, with their detections)
 #include "web_page.h"       // her own web page (scripts/esp32/web, embedded by scripts/make_web.py)
-#include <ArduinoOTA.h>     // new firmware over WiFi: flash.bat -Ota (no BOOT button)
 
 #if __has_include("secrets.h")
 #include "secrets.h"
@@ -255,7 +260,7 @@ String label(String a) {
 //   driving a robot that doesn't answer   red, blinking
 //   on DREAM's screen        her: orange pulse talking, teal listening, violet thinking, dim blue asleep
 //   otherwise, the network   a slow breath: green on RIFT, amber on another, blue hosting, red none
-bool ledReady = false, otaRunning = false;
+bool ledReady = false;
 void ledRgb(uint8_t r, uint8_t g, uint8_t b) {
   if (!ledReady) {
     ledcAttachChannel(PIN_LED_R, 5000, 8, 1);
@@ -1118,6 +1123,100 @@ void netLoop() {
 }
 
 // ---------------------------------------------------------------------------
+// How far the robot is: the fleet's beacons (fleet_near.h), ESP-NOW and Bluetooth LE
+// ---------------------------------------------------------------------------
+// Signal strength to metres, roughly: the log-distance rule, about -45 dBm at 1 m and an indoor
+// exponent. Walls, bodies and how she's held all move it by a few dB, so it says "about".
+#define NEAR_RSSI_1M -45.0f
+#define NEAR_PATH_N 2.7f
+#define NEAR_SHOWN_MS 3000            // heard in the last 3 s, or it shows "not heard"
+
+float nearMetres(float rssi) { return powf(10.0f, (NEAR_RSSI_1M - rssi) / (10.0f * NEAR_PATH_N)); }
+
+// Her beacon goes out on whatever network she's on (or hosts), and comes back up after a change.
+void nearLoop() {
+  static bool begun = false, beganHosting = false;
+  const bool up = hosting || WiFi.status() == WL_CONNECTED;
+  if (up && (!begun || hosting != beganHosting)) {
+    if (begun) { esp_now_deinit(); fleetNearOk = false; }
+    begun = fleetNearBegin("RITA", hosting ? WIFI_IF_AP : WIFI_IF_STA);
+    beganHosting = hosting;
+  }
+  fleetNearSetState(FLEET_USER);      // she's in your hand: "hand", like her old beacon
+  fleetNearLoop();
+#if RITA_NEAR_BLE
+  static bool bleUp = false;
+  if (!bleUp) {                        // Bluetooth LE needs no network: from the start
+    strncpy(fleetSelf, "RITA", sizeof(fleetSelf) - 1);
+    bleUp = fleetNearBleBegin("RITA");
+  }
+  fleetNearBleLoop();
+#endif
+}
+
+// The selected robot as heard: false if it hasn't been for NEAR_SHOWN_MS.
+bool nearOf(const char* name, float* rssi, const char** trend, bool* espnow, bool* ble) {
+  bool heard = false;
+  const unsigned long now = millis();
+  portENTER_CRITICAL(&fleetMux);
+  for (int i = 0; i < FLEET_NEAR_MAX; i++) {
+    const FleetPeer& p = fleetPeers[i];
+    if (!p.used || strcmp(p.name, name) != 0 || now - p.seenMs > NEAR_SHOWN_MS) continue;
+    *rssi = p.rssi;
+    *trend = fleetTrend(p);
+    *espnow = p.espnowMs && now - p.espnowMs < NEAR_SHOWN_MS;
+    *ble = p.bleMs && now - p.bleMs < NEAR_SHOWN_MS;
+    heard = true;
+  }
+  portEXIT_CRITICAL(&fleetMux);
+  return heard;
+}
+
+// Beside the robot's avatar on DRIVE: about how far, near / far, coming or going, and which radio.
+// Only this box is redrawn (twice a second), so the controller doesn't blink.
+bool nearShown() {
+  if (screen != SCR_CTRL || cur < 0 || camView) return false;
+  const Kind k = ROSTER[cur].kind;
+  return k != K_DREAM && k != K_ARM && k != K_ARIA;
+}
+void drawNear() {
+  if (!nearShown()) return;
+  const int x = 306 + AVATAR_SIZE + 8, y = BAR + 8, w = W - x - 4, h = AVATAR_SIZE;
+  lcd.fillRect(x, y, w, h, C_BG);
+  lcd.setTextDatum(top_left);
+  if (ROSTER[cur].kind == K_IDA) {          // no radio of her own: NORA's IR link drives her
+    lcd.setFont(&fonts::Font2);
+    lcd.setTextColor(C_DIM);
+    lcd.drawString("no radio:", x, y + 4);
+    lcd.drawString("by NORA", x, y + 22);
+    return;
+  }
+  float rssi = 0;
+  const char* trend = "";
+  bool espnow = false, ble = false;
+  if (!nearOf(ROSTER[cur].name, &rssi, &trend, &espnow, &ble)) {
+    lcd.setFont(&fonts::Font2);
+    lcd.setTextColor(C_DIM);
+    lcd.drawString("distance", x, y + 4);
+    lcd.drawString("not heard", x, y + 22);
+    return;
+  }
+  const float m = nearMetres(rssi);
+  const String far = m < 1.0f ? String("<1 m") : m < 10.0f ? String(m, 1) + " m" : String((int)(m + 0.5f)) + " m";
+  lcd.setFont(&fonts::Font2);
+  lcd.setTextColor(C_DIM);
+  lcd.drawString("about", x, y);
+  lcd.setFont(&fonts::Font4);
+  lcd.setTextColor(m < 1.5f ? C_OK : m < 6.0f ? C_TEXT : C_WARN);
+  lcd.drawString(far, x, y + 16);
+  lcd.setFont(&fonts::Font2);
+  lcd.setTextColor(!strcmp(trend, "approaching") ? C_OK : !strcmp(trend, "leaving") ? C_WARN : C_DIM);
+  lcd.drawString(!strcmp(trend, "approaching") ? "coming" : !strcmp(trend, "leaving") ? "going" : fleetZone(rssi), x, y + 44);
+  lcd.setTextColor(C_DIM);
+  lcd.drawString(espnow && ble ? "ESP-NOW+BT" : ble ? "Bluetooth" : "ESP-NOW", x, y + 62);
+}
+
+// ---------------------------------------------------------------------------
 // Drawing
 // ---------------------------------------------------------------------------
 void drawBar(const String& title, bool back) {
@@ -1485,6 +1584,7 @@ void drawCtrl() {
   else { state = "said " + String(lastCode); c = C_WARN; }
   lcd.setTextColor(c);
   lcd.drawString(state, rx, BAR + AVATAR_SIZE + 12);   // under the avatar: 166 px across
+  drawNear();                                          // beside the avatar: how far it is
   int n = 0;
   const Extra* ex = extrasOf(cur, &n);
   const int ew2 = 80, eh = 30, ey0 = BAR + AVATAR_SIZE + 32;   // 4 rows of 2, then RIFT's
@@ -1654,7 +1754,6 @@ void ledTick() {
   if (millis() - last < 25) return;
   last = millis();
   auto scaled = [](uint8_t r, uint8_t g, uint8_t b, float k) { ledRgb(r * k, g * k, b * k); };
-  if (otaRunning) { const bool on = (millis() / 120) % 2; scaled(255, 255, 255, on ? 1.0f : 0.1f); return; }
   const bool driving = screen == SCR_CTRL && cur >= 0;
   if (driving && curBase.length() && lastCode <= 0 && ROSTER[cur].kind != K_ARM) {   // it isn't answering
     scaled(255, 0, 0, (millis() / 250) % 2 ? 1.0f : 0.05f);
@@ -1896,16 +1995,6 @@ void setup() {
 
 void loop() {
   netLoop();
-  static bool otaUp = false;          // new firmware over WiFi (flash.bat -Ota), once she has a network
-  if (!otaUp && netState == NET_UP) {
-    ArduinoOTA.setHostname("rita");
-    ArduinoOTA.setPassword(ROBOT_PIN);
-    ArduinoOTA.onStart([]() { otaRunning = true; ledRgb(255, 255, 255); cam::stop(); mirror::hush(); lcd.fillScreen(C_BG); lcd.setTextColor(C_ACCENT); lcd.setFont(&fonts::Font4);
-                              lcd.setTextDatum(middle_center); lcd.drawString("Updating over WiFi...", W / 2, H / 2); });
-    ArduinoOTA.begin();
-    otaUp = true;
-  }
-  if (otaUp) ArduinoOTA.handle();
   if (!webUp && netState == NET_UP) webBegin();   // her web page, once she has a network
   if (webUp) web.handleClient();
   ledTick();
@@ -1916,7 +2005,7 @@ void loop() {
       if (hasStats(statNext)) { statPoll(statNext, false); break; }
     }
   }
-  fleetBeaconLoop();
+  nearLoop();
   touchLoop();
 
   // HOME and FLEET: who's on the network; RIFT's ROBOT screen: what it says. DRIVE talks to its
@@ -1934,6 +2023,8 @@ void loop() {
     if (s != shownSig) { shownSig = s; dirty = true; }
   }
   if (screen == SCR_CTRL) ctlLoop();
+  static unsigned long lastNear = 0;
+  if (nearShown() && !dirty && millis() - lastNear > 500) { lastNear = millis(); drawNear(); }
   static unsigned long lastRift = 0;
   if (millis() - lastRift > 5000 && screen != SCR_HOME && screen != SCR_FLEET && screen != SCR_STATS) {
     lastRift = millis();

@@ -7,9 +7,8 @@
 #   flash.bat -NoCompile flash the last build without compiling (it also skips the
 #                        compile by itself when no sketch file changed since the last build)
 #   flash.bat -CompileOnly  just build (fast after the first time)
-#   flash.bat -Ota rita.local   over WiFi, no cable and no BOOT button (or -Ota 192.168.x.y; her
-#                        password is ROBOT_PIN in secrets.h). Needs the cable once, for the
-#                        firmware that can take updates over WiFi.
+#   flash.bat -Ota ...      gone: her one big app slot (huge_app, for Bluetooth LE, like NORA and
+#                        WHIP) leaves no room for an update over WiFi. Flash her with the cable.
 #
 # The build is kept in build\esp32 (gitignored), so after the first compile
 # only the files you changed are rebuilt - unlike the Arduino IDE, which
@@ -25,7 +24,7 @@ param(
 # ---- what to flash (the only lines that differ between robots) ----
 $Robot  = "RITA"
 $Sketch = Join-Path $PSScriptRoot "esp32"
-$Fqbn   = "esp32:esp32:esp32:PartitionScheme=min_spiffs"   # two 1.9 MB app slots: room to grow, and updates over WiFi (1.3 MB today)
+$Fqbn   = "esp32:esp32:esp32:PartitionScheme=huge_app"     # one 3 MB app slot, like NORA and WHIP: room for Bluetooth LE (2.15 MB today). No second slot, so no updates over WiFi
 $Before = ""   # anything to say before flashing ("" = nothing)
 $Libs   = @("LovyanGFX", "ArduinoJson")   # installed on the first run if missing
 # --------------------------------------------------------------------
@@ -124,6 +123,8 @@ if ($CompileOnly) { exit 0 }
 
 # ---- over WiFi: espota from the ESP32 board package, to her ArduinoOTA ----
 if ($Ota) {
+    Say "RITA updates over the cable only now: her flash is one big slot (huge_app), so there's room for Bluetooth LE but no second slot for an update over WiFi. Plug her in and run flash.bat."
+    exit 1
     $espota = Get-ChildItem "$env:LOCALAPPDATA\Arduino15\packages\esp32\hardware\esp32\*\tools\espota.exe" -ErrorAction SilentlyContinue | Select-Object -Last 1
     if (-not $espota) { Say "I can't find espota in the E S P 32 board package."; exit 1 }
     $secrets = Join-Path $Sketch "secrets.h"

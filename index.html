@@ -175,10 +175,10 @@
     <h3 class="title">Get her talking to the fleet</h3>
     <ol class="steps">
       <li>Copy <code>scripts/esp32/secrets.example.h</code> to <code>secrets.h</code> and put in the fleet&rsquo;s WiFi passwords.</li>
-      <li>Run <code>flash.bat</code>, or flash <code>scripts/esp32/esp32.ino</code> as an <b>ESP32 Dev Module</b> with the <b>Minimal SPIFFS</b> partition scheme (libraries: LovyanGFX, ArduinoJson).</li>
+      <li>Run <code>flash.bat</code>, or flash <code>scripts/esp32/esp32.ino</code> as an <b>ESP32 Dev Module</b> with the <b>Huge APP (3MB No OTA)</b> partition scheme (libraries: LovyanGFX, ArduinoJson).</li>
       <li>On the first boot, tap each corner as it lights up. Hold the screen while she starts to calibrate again.</li>
       <li>She finds the fleet by herself. Tap a robot.</li>
-      <li>From then on, no cable: <code>flash.bat -Ota rita.local</code> updates her over WiFi.</li>
+      <li>New firmware goes over the cable: one big app slot leaves room for Bluetooth LE, not for updates over WiFi.</li>
     </ol>
   </div>
 </section>
