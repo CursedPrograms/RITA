@@ -90,7 +90,7 @@ const int W = 480, H = 320, BAR = 36;
 // ---------------------------------------------------------------------------
 // The fleet's WiFi ladder (highest first) and the hub
 // ---------------------------------------------------------------------------
-const char* const LADDER[] = { FLEET_SSID, "DREAM", "NINA", "TINA",
+const char* const LADDER[] = { FLEET_SSID, "DREAM", "NINA", "TINA", "AURA",
                                "NORACTL", "WHIPCTL", "KIDA01CTL", "KIDA00CTL", "ARMCTL" };   // above her, highest first
 const char* AP_SSID = "RITA";       // hers, when none of those is around: the robots below join it
 const int LADDER_N = sizeof(LADDER) / sizeof(LADDER[0]);
