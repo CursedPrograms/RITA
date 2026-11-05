@@ -32,8 +32,11 @@ namespace mirror {
 
 SPIClass sdSpi(VSPI);
 bool card = false;                 // an SD card with a /dream folder
-uint8_t* buf = nullptr;            // one JPEG frame
-const size_t BUF_SIZE = 48 * 1024;
+uint8_t* buf = nullptr;            // one JPEG frame: only while DREAM's screen is open, as big as her
+size_t bufSize = 0;                // biggest frame so far (10-40 KB). Held from boot, it left WiFi too
+                                   // little RAM next to Bluetooth, and she rebooted over and over.
+
+void freeBuf() { free(buf); buf = nullptr; bufSize = 0; }
 
 // ---- video ----
 File vid, idx;
@@ -47,8 +50,6 @@ int32_t shown = -1;                // the frame on the screen
 bool begin() {
   sdSpi.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS);
   card = SD.begin(SD_CS, sdSpi, 25000000) && SD.exists("/dream");
-  if (card && !buf) buf = (uint8_t*)malloc(BUF_SIZE);
-  if (!buf) card = false;
   return card;
 }
 
@@ -63,6 +64,7 @@ bool show(const String& name, uint32_t ms, bool loop) {
   if (vid) vid.close();
   if (idx) idx.close();
   clip = name; frames = 0; shown = -1;
+  if (!name.length()) freeBuf();   // off DREAM's screen: the RAM goes back
   if (!card || !name.length()) return false;
   idx = SD.open("/dream/" + name + ".idx");
   vid = SD.open("/dream/" + name + ".mjpeg");
@@ -85,7 +87,13 @@ template <class GFX> void frame(GFX& lcd, int x, int y) {
   if ((int32_t)k == shown) return;
   idx.seek(14 + 4 * k);
   const uint32_t a = rd32(idx), b = rd32(idx);
-  if (b <= a || b - a > BUF_SIZE) { shown = k; return; }
+  if (b <= a || b - a > 64 * 1024) { shown = k; return; }
+  if (b - a > bufSize) {             // a bigger frame than any so far: grow, in 4 KB steps
+    const size_t want = ((b - a) + 4095) & ~(size_t)4095;
+    uint8_t* more = (uint8_t*)realloc(buf, want);
+    if (!more) { shown = k; return; }   // no room right now: skip this frame, not her
+    buf = more; bufSize = want;
+  }
   vid.seek(a);
   if (vid.read(buf, b - a) != (int)(b - a)) return;
   lcd.drawJpg(buf, b - a, x, y);

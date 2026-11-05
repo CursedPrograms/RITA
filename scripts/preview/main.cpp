@@ -1,13 +1,20 @@
-// main.cpp - RITA on the PC: her real sketch, unchanged, against a pretend fleet.
+// main.cpp - RITA on the PC: her real sketch, unchanged.
 //
-//   rita_preview            a window: the mouse is your finger, Esc quits, the console shows her web calls
-//   rita_preview --shots D  her screens as D/<name>.ppm (preview.py turns them into images/screens/*.png)
+//   rita_preview [--hub HOST]  a window: RITA as she is on the board, on the real fleet: real HTTP to
+//                              RIFT and the robots, her web page on :80, DREAM's voice and her phrases
+//                              on the speakers, the robots' real cameras. Nothing is made up: what she
+//                              can't have on a PC (ESP-NOW, Bluetooth LE) she just doesn't hear.
+//                              The mouse is your finger, Esc quits, the console shows her web calls.
+//                              --hub: where a hub is, if not on this PC or the PC's gateway (or RITA_HUB)
+//   rita_preview --shots D     her screens as D/<name>.ppm against a pretend fleet, the same every time
+//                              (preview.py turns them into images/screens/*.png)
 //
 // preview.py copies esp32.ino in as sketch.inc, so the display.h it finds is shim/display.h.
 #define SDL_MAIN_HANDLED
 #include <SDL2/SDL.h>
 #include <string>
 
+bool ritaPretend = false;   // --shots: the pretend fleet below; the window: the real one
 void draw();
 #include <cstdio>
 #include "sketch.inc"
@@ -75,6 +82,38 @@ static const char ASK_JSON[] =
     "\"music_play\",\"music_next\",\"music_stop\",\"uv_on\",\"uv_off\",\"lock_wheels\"]}";
 
 static const char ARIA_JSON[] = "{\"name\":\"ARIA\",\"mode\":\"ground\",\"battery_v\":3.92,\"network\":\"RIFT\"}";
+
+// --shots' pretend camera: DREAM's idle clip from her sdcard folder, frame after frame
+static bool nextFrame(std::string* out) {
+  static std::vector<uint8_t> clip;
+  static std::vector<uint32_t> offs;
+  static size_t k = 0;
+  if (offs.empty()) {
+    const std::string base = ritaSdcard() + "/dream/idle0";
+    FILE* f = fopen((base + ".idx").c_str(), "rb");
+    FILE* m = fopen((base + ".mjpeg").c_str(), "rb");
+    if (f && m) {
+      std::vector<uint8_t> ix(1 << 20);
+      ix.resize(fread(ix.data(), 1, ix.size(), f));
+      fseek(m, 0, SEEK_END); clip.resize(ftell(m)); fseek(m, 0, SEEK_SET);
+      clip.resize(fread(clip.data(), 1, clip.size(), m));
+      for (size_t i = 14; i + 3 < ix.size(); i += 4) offs.push_back(ix[i] | ix[i + 1] << 8 | ix[i + 2] << 16 | (uint32_t)ix[i + 3] << 24);
+    }
+    if (f) fclose(f);
+    if (m) fclose(m);
+    if (offs.size() < 2) return false;
+  }
+  const size_t n = offs.size() - 1;
+  *out = "--frame\r\nContent-Type: image/jpeg\r\n\r\n" + std::string((const char*)clip.data() + offs[k % n], offs[k % n + 1] - offs[k % n]) + "\r\n";
+  k++;
+  return true;
+}
+bool fakeStream(const String& url, WiFiClient* into) {
+  if (url.indexOf("video_feed") < 0 && url.indexOf("camera.mjpeg") < 0) return false;
+  into->refill = nextFrame;
+  into->fake.clear();
+  return true;
+}
 
 static String heard;   // every call since the last check, for STOP's check below
 
@@ -173,6 +212,7 @@ static bool stops(int r, const char* idFromMode, const char* expected) {
 
 static int takeShots() {
   shots = true;
+  ritaPretend = true;
   onLongDelay = [](unsigned long ms) { shot("01_splash"); fakeNow += ms; };
   setup();
   onLongDelay = nullptr;
@@ -332,7 +372,7 @@ static int window() {
   if (SDL_Init(SDL_INIT_VIDEO) != 0) { printf("SDL: %s\n", SDL_GetError()); return 1; }
   printf("RITA: the mouse is your finger. Keys: 1-9/0 open a robot, WASD/arrows drive (hold), Q/E crab or turn,\n"
          "Space STOP, Backspace back, T WASD/TANK, R RIFT, M DREAM's sound, C camera, V KIDA-01's other camera, Esc quits.\n");
-  SDL_Window* win = SDL_CreateWindow("RITA preview (a pretend fleet)", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+  SDL_Window* win = SDL_CreateWindow("RITA", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                      W * SCALE, H * SCALE, 0);
   renderer = SDL_CreateRenderer(win, -1, 0);
   texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGB24, SDL_TEXTUREACCESS_STREAMING, W, H);
@@ -355,5 +395,7 @@ int main(int argc, char** argv) {
     shotDir = argv[2];
     return takeShots();
   }
+  for (int i = 1; i + 1 < argc; i++)
+    if (!strcmp(argv[i], "--hub")) pcnet::ladder().extraHub = argv[i + 1];
   return window();
 }

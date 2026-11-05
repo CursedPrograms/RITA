@@ -1,12 +1,17 @@
 // dream_mirror.h for the PC preview: RITA's repo sdcard/ folder is her SD card (preview.py passes its
-// path as RITA_SDCARD), so DREAM's clips play here the way they do on the board. Her voice is the
-// board's (the DAC): here it's only printed.
+// path as RITA_SDCARD), so DREAM's clips play here the way they do on the board. Her speaker (the
+// board's DAC) is the PC's: DREAM's voice is fetched from DREAM and played, and RITA's Brainfuck
+// phrases beep, as on the board. --shots stays silent and only prints them.
 #pragma once
 #include <Arduino.h>
 #include <cstdio>
 #include <cstring>
 #include <string>
 #include <vector>
+#include <atomic>
+#include <thread>
+#include <SDL2/SDL.h>
+#include "pc_net.h"
 #ifndef pgm_read_byte
 #define pgm_read_byte(p) (*(const uint8_t*)(p))
 #endif
@@ -49,7 +54,6 @@ bool begin() {
   if (f) fclose(f);
   return card;
 }
-bool voiceBegin() { return true; }
 
 bool show(const String& name, uint32_t ms, bool loop) {
   clipStart = millis() - ms;
@@ -82,12 +86,71 @@ template <class GFX> void frame(GFX& lcd, int x, int y) {
   shown = k;
 }
 
+// ---- voice: the board's DAC is the PC's speakers here (16 kHz, unsigned 8-bit, like the DAC) ----
+SDL_AudioDeviceID dac = 0;
+std::atomic<unsigned> voiceGen{0};           // a new line (or hush) bumps it: the one playing stops
+std::atomic<bool> fetching{false};
+const uint8_t TALK_VOICE_PCT = 118;          // her voice: a little higher than the fleet's
+
+bool voiceBegin() {
+  if (ritaPretend) return false;
+  if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) return false;
+  SDL_AudioSpec want = {}, got = {};
+  want.freq = 16000;
+  want.format = AUDIO_U8;
+  want.channels = 1;
+  want.samples = 512;
+  dac = SDL_OpenAudioDevice(nullptr, 0, &want, &got, 0);
+  if (dac) SDL_PauseAudioDevice(dac, 0);
+  return dac != 0;
+}
+static bool busy() { return dac && (fetching || SDL_GetQueuedAudioSize(dac) > 0); }
+
 void say(const String& base, const String& id, uint32_t ms) {
   if (!sound || !id.length() || id == voiceId) return;
   voiceId = id;
-  printf("(DREAM's voice on the speaker: %s/speech/%s from %u ms)\n", base.c_str(), id.c_str(), (unsigned)ms);
+  if (!dac) { printf("(DREAM's voice: %s/speech/%s from %u ms - no speakers)\n", base.c_str(), id.c_str(), (unsigned)ms); return; }
+  const unsigned gen = ++voiceGen;
+  SDL_ClearQueuedAudio(dac);                 // a line still playing gives way
+  const std::string url = std::string(base.c_str()) + "/speech/" + id.c_str() + "?from_ms=" + std::to_string(ms + 150);
+  fetching = true;
+  std::thread([url, gen]() {
+    pcnet::Response r;
+    if (pcnet::request("GET", url, {}, "", 3000, &r) == 200) {
+      uint8_t chunk[1024];
+      int n;
+      while (voiceGen == gen && (n = r.read(chunk, sizeof(chunk))) > 0) {
+        while (voiceGen == gen && SDL_GetQueuedAudioSize(dac) > 16000) SDL_Delay(20);   // half a second ahead, like the DAC's buffer
+        if (voiceGen == gen) SDL_QueueAudio(dac, chunk, n);
+      }
+    }
+    r.close();
+    if (voiceGen == gen) fetching = false;
+  }).detach();
 }
-void hush() { voiceId = ""; }
-bool chirp(int u) { printf("(RITA beeps Brainfuck phrase %d)\n", u); return true; }
+void hush() {
+  voiceId = "";
+  ++voiceGen;
+  fetching = false;
+  if (dac) SDL_ClearQueuedAudio(dac);
+}
+
+// A Brainfuck phrase on her speaker: each symbol a square wave (bfToneHz/bfToneMs), as on the board.
+// False if it's busy (DREAM's voice) or there are no speakers.
+bool chirp(int u) {
+  if (ritaPretend) { printf("(RITA beeps Brainfuck phrase %d)\n", u); return true; }
+  if (!dac || busy() || u < 0 || u >= TALK_UTTERANCES) return false;
+  std::vector<uint8_t> pcm;
+  for (uint16_t n = 0;; n++) {
+    const char c = talkSymbol(u, n);
+    if (!c) break;
+    const uint32_t hz = (uint32_t)bfToneHz(c) * TALK_VOICE_PCT / 100;
+    const uint32_t samples = 16000UL * bfToneMs(c) / 1000, gap = 16000UL * TALK_GAP_MS / 1000, half = hz ? 8000 / hz : 0;
+    for (uint32_t i = 0; i < samples; i++) pcm.push_back(half && (i / half) % 2 ? 170 : 86);
+    pcm.insert(pcm.end(), gap, 128);
+  }
+  SDL_QueueAudio(dac, pcm.data(), (Uint32)pcm.size());
+  return true;
+}
 
 }  // namespace mirror

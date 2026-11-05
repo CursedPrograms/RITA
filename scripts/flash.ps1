@@ -26,7 +26,7 @@ $Robot  = "RITA"
 $Sketch = Join-Path $PSScriptRoot "esp32"
 $Fqbn   = "esp32:esp32:esp32:PartitionScheme=huge_app"     # one 3 MB app slot, like NORA and WHIP: room for Bluetooth LE (2.15 MB today). No second slot, so no updates over WiFi
 $Before = ""   # anything to say before flashing ("" = nothing)
-$Libs   = @("LovyanGFX", "ArduinoJson")   # installed on the first run if missing
+$Libs   = @("LovyanGFX", "ArduinoJson", "NimBLE-Arduino")   # installed on the first run if missing (NimBLE: her Bluetooth LE)
 # --------------------------------------------------------------------
 
 $ErrorActionPreference = "Stop"

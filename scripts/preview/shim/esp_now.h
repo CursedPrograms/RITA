@@ -1,8 +1,10 @@
-// esp_now.h - on the PC: sends go nowhere, and a pretend NORA and WHIP answer each beacon RITA sends,
-// so DRIVE shows how far they are (WHIP slowly walking away and back).
+// esp_now.h - on the PC. A PC has no ESP-NOW radio, so in the window her beacons go nowhere and
+// nobody answers: DRIVE says a robot isn't heard, as it does on the board when none is in range.
+// Only --shots has a pretend NORA, WHIP and MILA answering, so the screenshots show the distance.
 #pragma once
 #include <Arduino.h>
 #include <cmath>
+extern bool ritaPretend;
 
 #define ESP_OK 0
 typedef int wifi_interface_t;
@@ -33,7 +35,7 @@ inline bool esp_now_is_peer_exist(const uint8_t*) { return false; }
 inline int esp_now_add_peer(const esp_now_peer_info_t*) { return ESP_OK; }
 inline int esp_now_send(const uint8_t*, const uint8_t* data, size_t len) {
   esp_now_recv_cb_t cb = esp_now_shim_cb();
-  if (!cb || len < 20) return ESP_OK;
+  if (!ritaPretend || !cb || len < 20) return ESP_OK;
   struct Fake { const char* name; int rssi; } fakes[] = {
     { "NORA", -52 },
     { "WHIP", -60 - (int)(12 * (0.5 + 0.5 * std::sin(millis() / 8000.0))) },

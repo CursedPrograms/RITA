@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""preview.py - RITA's screens on the PC, no board needed. Her real esp32.ino, drawn by the real LovyanGFX.
+"""preview.py - RITA on the PC, no board needed. Her real esp32.ino, drawn by the real LovyanGFX, on the
+real fleet: real HTTP, her web page, DREAM's voice and the robots' cameras (see main.cpp).
 
     python scripts/preview/preview.py           a window: the mouse is your finger
-    python scripts/preview/preview.py --shots   writes images/screens/*.png
+    python scripts/preview/preview.py --shots   writes images/screens/*.png (a pretend fleet, the same every time)
 
 Needs g++ and SDL2 (Windows: MSYS2's mingw64, pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-SDL2),
 Pillow for --shots, and the libraries flash.bat installs (LovyanGFX, ArduinoJson).
@@ -77,7 +78,7 @@ def build():
         objects = list(pool.map(compile_lovyan, sources))
 
     shutil.copyfile(REPO / "scripts" / "esp32" / "esp32.ino", BUILD / "sketch.inc")
-    libs = ["-lSDL2"] + (["-lws2_32", "-lwinmm"] if os.name == "nt" else ["-lpthread"])
+    libs = ["-lSDL2"] + (["-lws2_32", "-liphlpapi", "-lwinmm"] if os.name == "nt" else ["-lpthread"])
     subprocess.run([gpp, *FLAGS, *includes, str(HERE / "main.cpp"), *map(str, objects), *libs, "-Wl,--gc-sections", "-s", "-o", str(EXE)],
                    env=env, check=True)
     return env
@@ -101,7 +102,7 @@ def main():
     if "--shots" in sys.argv:
         take_shots(env)
     else:
-        subprocess.run([str(EXE)], env=env)
+        subprocess.run([str(EXE), *[a for a in sys.argv[1:] if a != "--shots"]], env=env)
 
 
 if __name__ == "__main__":

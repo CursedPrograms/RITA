@@ -1,4 +1,4 @@
-// BLEDevice.h - on the PC: Bluetooth LE that never hears anyone (ESP-NOW's pretend robots are enough).
+// BLEDevice.h - on the PC: Bluetooth LE that never hears anyone (the emulator has no BLE radio of hers).
 #pragma once
 #include <Arduino.h>
 

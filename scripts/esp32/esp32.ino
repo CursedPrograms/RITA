@@ -41,6 +41,7 @@
 #define RITA_NEAR_BLE 1             // ...and over Bluetooth LE: the KIDAs only beacon there
 #endif
 #if RITA_NEAR_BLE
+#define FLEET_BLE_NIMBLE 1          // NimBLE, not Bluedroid: half the RAM (see fleet_near_ble.h)
 #include "fleet_near_ble.h"
 #endif
 #include <HTTPClient.h>
@@ -1145,12 +1146,7 @@ void nearLoop() {
   fleetNearSetState(FLEET_USER);      // she's in your hand: "hand", like her old beacon
   fleetNearLoop();
 #if RITA_NEAR_BLE
-  static bool bleUp = false;
-  if (!bleUp) {                        // Bluetooth LE needs no network: from the start
-    strncpy(fleetSelf, "RITA", sizeof(fleetSelf) - 1);
-    bleUp = fleetNearBleBegin("RITA");
-  }
-  fleetNearBleLoop();
+  fleetNearBleLoop();                  // started in setup(), before WiFi (see there)
 #endif
 }
 
@@ -1981,6 +1977,14 @@ void setup() {
   lcd.drawString("for Total Autonomy", tx, H / 2 + 24);
   lcd.setTextDatum(top_left);
   delay(5000);   // her splash: 5 s
+#if RITA_NEAR_BLE
+  // Bluetooth LE first, like NORA: its stack needs a big piece of internal RAM, and started after WiFi,
+  // the SD card and the speaker (from loop) it didn't get one and crashed her at every boot.
+  strncpy(fleetSelf, "RITA", sizeof(fleetSelf) - 1);
+  Serial.printf("[RITA] heap before Bluetooth: %u\n", (unsigned)ESP.getFreeHeap());
+  fleetNearBleBegin("RITA");
+  Serial.printf("[RITA] heap after Bluetooth: %u\n", (unsigned)ESP.getFreeHeap());
+#endif
   int32_t x, y;
   calibrate(lcd.getTouch(&x, &y));   // held at boot: calibrate again
   mirror::begin();                    // an SD card with DREAM's clips, if there is one
@@ -1991,6 +1995,7 @@ void setup() {
   WiFi.setAutoReconnect(true);
   startScan(false);
   dirty = true;
+  Serial.printf("[RITA] up, heap: %u (biggest block %u)\n", (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
 }
 
 void loop() {
