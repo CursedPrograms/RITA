@@ -94,7 +94,7 @@ RITA is a 3.5" touch screen that shows the DREAM Robotics fleet and talks to it 
 
 ### Later
 - [ ] **SD card, more of it:** the robots' avatars as short looping clips on HOME (the built-in avatars stay, for a card-less RITA); an animated boot splash; a screensaver of DREAM's clips when RITA's been idle a while; her WiFi and robot list in a `rita.json` on the card; a log of what she sent and what each robot answered; music through the speaker.
-- [ ] DREAM's mirror from `scripts/dream.py` and `dream.exe` too (today it's her page: `app.py`, the browser and DREAM-Controller.exe).
+- [ ] DREAM's mirror from `scripts/dream.py` and the C++ `dream.exe` too (today it's her page: `app.py`, the browser and `builds/dream.exe`).
 - [ ] RIFT's music together, the mission log and the robots' conversations.
 - [ ] Start a robot's MIND mode from her (through its PC controller).
 
