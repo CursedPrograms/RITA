@@ -12,6 +12,10 @@ class String {
 
  public:
   String() {}
+  bool equalsIgnoreCase(const String& o) const {
+    return s.size() == o.s.size() && std::equal(s.begin(), s.end(), o.s.begin(),
+                                                [](char a, char b) { return tolower((unsigned char)a) == tolower((unsigned char)b); });
+  }
   String(const char* c) : s(c ? c : "") {}
   String(const std::string& t) : s(t) {}
   String(char c) : s(1, c) {}
@@ -51,6 +55,12 @@ class String {
   }
   void toLowerCase() { std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return (char)tolower(c); }); }
   int lastIndexOf(char c) const { size_t i = s.rfind(c); return i == std::string::npos ? -1 : (int)i; }
+  void trim() {
+    const char* ws = " \t\r\n";
+    const size_t a = s.find_first_not_of(ws);
+    if (a == std::string::npos) { s.clear(); return; }
+    s = s.substr(a, s.find_last_not_of(ws) - a + 1);
+  }
   void toUpperCase() { std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return (char)toupper(c); }); }
   long toInt() const { return strtol(s.c_str(), nullptr, 10); }
 

@@ -79,5 +79,10 @@ class Preferences {
     save();
     return 1;
   }
+  long getLong(const char* k, long def) {
+    long v = def;
+    return getBytes(k, &v, sizeof(v)) == sizeof(v) ? v : def;
+  }
+  size_t putLong(const char* k, long v) { return putBytes(k, &v, sizeof(v)); }
   void end() {}
 };

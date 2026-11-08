@@ -4,6 +4,8 @@ real fleet: real HTTP, her web page, DREAM's voice and the robots' cameras (see 
 
     python scripts/preview/preview.py           a window: the mouse is your finger
     python scripts/preview/preview.py --shots   writes images/screens/*.png (a pretend fleet, the same every time)
+    python scripts/preview/preview.py --build   only builds it, doesn't start her (a running RITA can take
+                                                the fleet's :5000 and :80 when she can't find RIFT)
 
 Needs g++ and SDL2 (Windows: MSYS2's mingw64, pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-SDL2),
 Pillow for --shots, and the libraries flash.bat installs (LovyanGFX, ArduinoJson).
@@ -99,7 +101,9 @@ def take_shots(env):
 
 def main():
     env = build()
-    if "--shots" in sys.argv:
+    if "--build" in sys.argv:
+        print("built", EXE)
+    elif "--shots" in sys.argv:
         take_shots(env)
     else:
         subprocess.run([str(EXE), *[a for a in sys.argv[1:] if a != "--shots"]], env=env)

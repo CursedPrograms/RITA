@@ -116,3 +116,7 @@ class WiFiClass {
   bool softAPdisconnect(bool) { return true; }
 };
 static WiFiClass WiFi;
+
+// The board sets its clock from NTP; a PC's clock is already right (time() reads it).
+#include <ctime>
+inline void configTime(long, int, const char*, const char* = nullptr, const char* = nullptr) {}

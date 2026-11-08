@@ -109,7 +109,10 @@ unsigned long tryStart = 0, lastLook = 0, lostSince = 0, lastRegister = 0;
 bool lookScan = false;                // the scan running is the once-a-minute look, not a start-over
 bool hubIsRift = false;               // the hub answers /fleet (RIFT): ask and do work
 bool hosting = false;                 // she's the network ("RITA") and its fleet list
-bool talkOn = true;                   // TALK on HOME: she joins the fleet's Brainfuck conversations
+bool talkOn = true;                   // TALK on HOME: she joins the fleet's Brainfuck conversations (her chat switch)
+bool talkSound = true;                // her chirps out loud; off, she chats quietly (her sound switch, /talkmute?on=)
+void setTalk(bool on);                // TALK: further down (the PC preview has no Arduino prototypes)
+bool saver = false;                   // the screensaver is up (saverLoop, further down)
 
 String hubUrl() { return String("http://") + WiFi.gatewayIP().toString() + ":" + HUB_PORT; }
 String netName() { return hosting ? String(AP_SSID) : rank >= 0 && rank < LADDER_N ? String(LADDER[rank]) : String(""); }
@@ -308,7 +311,7 @@ void registerWithHub() {
   http.begin(hubUrl() + "/register");
   http.setTimeout(2000);
   http.addHeader("Content-Type", "application/x-www-form-urlencoded");
-  http.POST(String("name=RITA&type=remote&capabilities=remote") + (talkOn ? ",talk:80" : ""));   // talk: RIFT's conversations
+  http.POST("name=RITA&type=remote&capabilities=remote,talk:80");   // talk: RIFT's conversations (and its mute switch)
   http.end();
 }
 
@@ -560,6 +563,9 @@ void webStatus() {
   d["toast"] = toast.length() && millis() <= toastUntil ? toast : String("");
   d["hosting"] = hosting;
   d["talk"] = talkOn;
+  d["talk_sound"] = talkSound;
+  d["talk_muted"] = !talkSound;   // the fleet's names for them (RIFT's Fleet/talk_mute.py)
+  d["chat_off"] = !talkOn;
   d["rift"] = hubIsRift;
   d["net"] = netState == NET_UP ? netName() : String("");
   d["ip"] = hosting ? String("192.168.4.1") : WiFi.localIP().toString();
@@ -591,14 +597,31 @@ void webBegin() {
   web.on("/avatar.jpg", []() { web.send_P(200, "image/jpeg", (const char*)SPLASH_JPG, sizeof(SPLASH_JPG)); });
   web.on("/api/status", webStatus);
   // RIFT's conversations: GET /chirp?u=<n> beeps that Brainfuck phrase on her speaker (talk_bf.h).
-  // Quiet when TALK is off, or while her speaker plays something else (DREAM's voice): 409.
+  // TALK off (her chat switch): 409, RIFT leaves her out. Her sound off: the words on her screen, no chirp.
+  // While her speaker plays something else (DREAM's voice): 409.
   web.on("/chirp", []() {
     const int u = web.hasArg("u") ? web.arg("u").toInt() : -1;
     if (u < 0 || u >= TALK_UTTERANCES) { web.send(400, "application/json", "{\"ok\":false,\"error\":\"u: 0-16\"}"); return; }
-    if (!talkOn) { web.send(409, "application/json", "{\"ok\":false,\"error\":\"talk is off\"}"); return; }
+    if (!talkOn) { web.send(409, "application/json", "{\"ok\":false,\"reason\":\"chat_off\",\"error\":\"talk is off\"}"); return; }
+    if (!talkSound) {
+      say(String("RITA: ") + TALK_TEXT[u], C_DIM, 3000);
+      web.send(200, "application/json", "{\"ok\":true,\"silent\":true}");
+      return;
+    }
     if (!mirror::chirp(u)) { web.send(409, "application/json", "{\"ok\":false,\"error\":\"her speaker is busy\"}"); return; }
     say(String("RITA: ") + TALK_TEXT[u], C_ACCENT, 3000);   // what the program prints
     web.send(200, "application/json", "{\"ok\":true}");
+  });
+  // The fleet's two talk switches (RIFT's Fleet/talk_mute.py): ?on=0|1|toggle her chirps' sound,
+  // ?chat_off=0|1|toggle TALK on HOME, inverted.
+  web.on("/talkmute", []() {
+    if (web.hasArg("on")) {
+      talkSound = web.arg("on") == "toggle" ? !talkSound : web.arg("on").toInt() == 0;
+      prefs.begin("rita", false); prefs.putBool("talksnd", talkSound); prefs.end();
+    }
+    if (web.hasArg("chat_off")) setTalk(web.arg("chat_off") == "toggle" ? !talkOn : web.arg("chat_off").toInt() == 0);
+    web.send(200, "application/json", String("{\"talk_muted\":") + (talkSound ? "false" : "true") +
+             ",\"chat_off\":" + (talkOn ? "false" : "true") + "}");
   });
   web.begin();
   webUp = true;
@@ -621,6 +644,7 @@ String heldPad;                    // the pad button held now ("" = none)
 float heldF = 0, heldS = 0, heldT = 0;   // ... as forward, sideways (+ left), turn (+ anticlockwise)
 unsigned long lastBeat = 0, lastPoll = 0;
 int lastCode = 0;                  // the robot's last answer (HTTP code; <= 0: none)
+int8_t wheelLock = -1;             // the robot's wheel lock from its /status (lockKey: 1 locked, 0 free, -1 not known)
 bool camView = false;              // CAM: its camera on the screen (KIDA-00, KIDA-01, DREAM)
 int servoAngle = 90;               // KIDA-00's camera servo, 0-180 (her /status camera_servo.angle)
 bool servoHeld = false;            // a finger on its slider
@@ -664,6 +688,20 @@ int robotGetInt(const String& path, const char* key, uint16_t timeout = 600) {
   const String find = String("\"") + key + "\":";
   const int at = body.indexOf(find);
   return at < 0 ? -1 : body.substring(at + find.length()).toInt();
+}
+// A GET of a robot's /talkmute: 1 her talking is muted, 0 it isn't, -1 no answer (or no switch)
+int talkMuteGet(const String& path) {
+  if (!curBase.length() || netState != NET_UP) return -1;
+  HTTPClient http;
+  http.begin(curBase + path);
+  http.setTimeout(800);
+  lastCode = http.GET();
+  String body = lastCode == 200 ? http.getString() : "";
+  http.end();
+  body.replace(" ", "");   // the Python robots may answer {"talk_muted": true}
+  if (body.indexOf("\"talk_muted\":true") >= 0) return 1;
+  if (body.indexOf("\"talk_muted\":false") >= 0) return 0;
+  return -1;
 }
 // A word out of a JSON answer: "key":"word" or "key":12.34, "" if it isn't there
 String jsonField(const String& body, const char* key) {
@@ -734,6 +772,44 @@ void mixTracks(float f, float t, float* l, float* r) {
   *r = constrain(f + t, -1.0f, 1.0f);
 }
 
+// Each robot's wheel lock, as its own /status names it (nullptr: it has none)
+const char* lockKey(int r) {   // r: a ROSTER index (Kind would break the Arduino prototypes)
+  if (r < 0) return nullptr;
+  switch (ROSTER[r].kind) {
+    case K_WHIP:   return "locked";       // NORA's link lock / /motorlockOn
+    case K_NORA:   return "lock";
+    case K_TANK:   return "lock";         // MILA, NIKA: their UNO's lock
+    case K_KIDA00: return "motor_lock";
+    case K_KIDA01: return "motor_lock";
+    default:       return nullptr;
+  }
+}
+bool hasLock(int r) { return lockKey(r) != nullptr; }
+// The lock out of a /status answer: 1 / true locked, 0 / false free
+void readLock(const String& body) {
+  if (cur < 0 || !body.length()) return;
+  const char* key = lockKey(cur);
+  if (!key) return;
+  String v = jsonField(body, key);
+  v.trim();
+  const int8_t now = !v.length() ? -1 : (v == "true" || v.toInt() != 0) ? 1 : 0;
+  if (now != wheelLock) { wheelLock = now; dirty = true; }
+}
+// The robot's /status, read for its lock, so RITA knows from the moment she connects (and sees
+// NORA's IR LOCK or RIFT's Lock all too). MILA / NIKA's bridge wants it every 400 ms anyway.
+// The HTTP code, as robotGet's.
+int statusPoll() {
+  if (!curBase.length() || netState != NET_UP) return -1;
+  HTTPClient http;
+  http.begin(curBase + "/status");
+  http.setTimeout(500);
+  const int code = http.GET();
+  const String body = code == 200 ? http.getString() : "";
+  http.end();
+  readLock(body);
+  return code;
+}
+
 // Into the robot's controller: sign in where it has one, and its manual mode, so the pad drives it
 void ctlEnter(int r) {
   cur = r;
@@ -741,6 +817,7 @@ void ctlEnter(int r) {
   curBase = ip.length() ? "http://" + ip + ":" + String(ROSTER[r].port) : "";
   trackL = trackR = 0; linkTracks = false; heldPad = ""; lastCode = 0;
   tankUi = false;
+  wheelLock = -1;
   if (!curBase.length()) return;
   switch (ROSTER[r].kind) {
     case K_WHIP: robotGet("/unlock?pw=" ROBOT_PIN); lastCode = robotGet("/mode?m=web"); break;
@@ -751,6 +828,7 @@ void ctlEnter(int r) {
     case K_IDA: lastCode = robotGet("/ida?c=manual"); break;
     default: break;
   }
+  if (hasLock(r)) statusPoll();   // locked or not, from the get-go
 }
 
 // One drive command (pad held): f forward, s sideways (+ left), t turn (+ anticlockwise)
@@ -871,6 +949,7 @@ void ctlLoop() {
       http.end();
       if ((code > 0) != (lastCode > 0)) dirty = true;
       if (!heldPad.length() || code <= 0) lastCode = code;
+      readLock(body);
       const int at = body.indexOf("\"camera_servo\"");
       if (at >= 0 && !servoHeld && millis() - servoSentAt > 1500) {
         const String a = jsonField(body.substring(at), "angle");
@@ -878,7 +957,7 @@ void ctlLoop() {
       }
       return;
     }
-    const int code = robotGet("/status", 500);
+    const int code = hasLock(cur) ? statusPoll() : robotGet("/status", 500);
     if ((code > 0) != (lastCode > 0)) dirty = true;
     if (!heldPad.length() || code <= 0) lastCode = code;
   }
@@ -924,13 +1003,13 @@ void padRelease() {
 const Extra EX_WHIP[]   = { {"HELLO", "hello"}, {"DANCE", "dance"}, {"REST", "rest"}, {"STAY", "stay"}, {"AUTO", "auto"}, {"MANUAL", "manual"},
                             {"CRAB -", "crabin"}, {"CRAB +", "crabout"} };
 const Extra EX_NORA[]   = { {"STAY", "stay"}, {"AUTO", "auto"}, {"MANUAL", "manual"}, {"UV ON", "uvon"}, {"UV OFF", "uvoff"},
-                            {"MUSIC", "music"}, {"UNLOCK", "unlock"}, {"LOCK", "lock"} };   // 8 at most; next song: RIFT: ASK / DO
+                            {"MUSIC", "music"}, {"LOCK", "lockt"}, {"MUTE", "mutet"} };   // 8 at most; next song: RIFT: ASK / DO
 const Extra EX_TANK[]   = { {"AUTO", "auto"}, {"MANUAL", "manual"}, {"SPEED", "speed"}, {"CHIRP", "chirp"},
-                            {"UNLOCK", "unlock"}, {"LOCK", "lock"} };
+                            {"LOCK", "lockt"}, {"MUTE", "mutet"} };
 const Extra EX_KIDA00[] = { {"AUTO", "auto"}, {"MANUAL", "manual"}, {"PHOTO", "photo"}, {"MUSIC", "music"},
-                            {"SKIP", "skip"}, {"UNLOCK", "unlock"}, {"LOCK", "lock"} };
+                            {"SKIP", "skip"}, {"LOCK", "lockt"}, {"MUTE", "mutet"} };
 const Extra EX_KIDA01[] = { {"MANUAL", "manual"}, {"SPEED", "speed"}, {"PHOTO", "photo"}, {"MUSIC", "music"},
-                            {"SKIP", "skip"}, {"UNLOCK", "unlock"}, {"LOCK", "lock"} };
+                            {"SKIP", "skip"}, {"LOCK", "lockt"}, {"MUTE", "mutet"} };
 const Extra EX_IDA[]    = { {"AUTO", "auto"}, {"MANUAL", "manual"}, {"SPEED", "speed"} };
 const Extra* extrasOf(int r, int* n) {
   switch (ROSTER[r].kind) {
@@ -953,6 +1032,25 @@ void ctlExtra(const String& x) {
   }
   const Kind k = ROSTER[cur].kind;
   int code = -1;
+  if (x == "mutet") {   // her sound switch (/talkmute: RIFT's and her page's too): she chats, quietly or out loud
+    const int now = talkMuteGet("/talkmute?on=toggle");
+    if (now < 0) say(String(ROSTER[cur].label) + " has no talk switch (" + lastCode + ")", C_WARN);
+    else say(String(ROSTER[cur].label) + (now ? ": chats quietly" : ": chats out loud"), C_OK);
+    dirty = true;
+    return;
+  }
+  if (x == "lockt" && hasLock(cur)) {   // the one lock button: unlocks a locked robot, else locks
+    const bool unlock = wheelLock == 1;
+    if (k == K_KIDA01) code = unlock ? robotGet("/unlock?pw=" ROBOT_PIN) : kida01("motor_lock_on");
+    else code = robotGet(unlock ? "/motorlockOff?pw=" ROBOT_PIN : "/motorlockOn");
+    lastCode = code;
+    if (code == 200) { delay(150); statusPoll(); }   // what the robot says now (MILA's UNO answers LOCK:0 / LOCK:1)
+    if (code != 200) say(String(ROSTER[cur].label) + " said no (" + code + ")", C_BAD);
+    else if (wheelLock == (unlock ? 1 : 0)) say(String(ROSTER[cur].label) + " is still " + (unlock ? "locked" : "unlocked"), C_WARN);
+    else say(String(ROSTER[cur].label) + (unlock ? ": unlocked" : ": locked"), C_OK);
+    dirty = true;
+    return;
+  }
   switch (k) {
     case K_WHIP:
       if (x == "stay") code = robotGet("/mode?m=stay");
@@ -972,16 +1070,12 @@ void ctlExtra(const String& x) {
       else if (x == "uvon") code = robotGet("/uvOn");
       else if (x == "uvoff") code = robotGet("/uvOff");
       else if (x == "music") code = robotGet("/muPlay");
-      else if (x == "unlock") code = robotGet("/motorlockOff?pw=" ROBOT_PIN);
-      else if (x == "lock") code = robotGet("/motorlockOn");
       break;
     case K_TANK:
       if (x == "auto") code = robotGet("/mode?v=obstacle");
       else if (x == "manual") code = robotGet(tankUi ? "/mode?v=tank" : "/mode?v=wasd");
       else if (x == "speed") code = robotGet("/cmd?v=SPEEDCYCLE");
       else if (x == "chirp") code = robotGet("/chirp?u=0");   // a phrase is required: 0 is hello
-      else if (x == "unlock") code = robotGet("/motorlockOff?pw=" ROBOT_PIN);
-      else if (x == "lock") code = robotGet("/motorlockOn");
       break;
     case K_KIDA00:
       if (x == "auto") code = kida00("_mode_autonomous");
@@ -989,8 +1083,6 @@ void ctlExtra(const String& x) {
       else if (x == "photo") code = kida00("photo");
       else if (x == "music") code = kida00("music_toggle");
       else if (x == "skip") code = kida00("skip");
-      else if (x == "unlock") code = robotGet("/motorlockOff?pw=" ROBOT_PIN);
-      else if (x == "lock") code = robotGet("/motorlockOn");
       break;
     case K_KIDA01:
       if (x == "manual") code = kida01("mode_1");
@@ -998,8 +1090,6 @@ void ctlExtra(const String& x) {
       else if (x == "photo") code = kida01("photo");
       else if (x == "music") code = kida01("music_play");
       else if (x == "skip") code = kida01("music_skip");
-      else if (x == "unlock") code = robotGet("/unlock?pw=" ROBOT_PIN);
-      else if (x == "lock") code = kida01("motor_lock_on");
       break;
     case K_IDA: code = robotGet("/ida?c=" + x); break;
     default: break;
@@ -1574,6 +1664,7 @@ void drawCtrl() {
   String state;
   uint16_t c;
   if (!curBase.length()) { state = "not on the network"; c = C_BAD; }
+  else if (lastCode == 200 && hasLock(cur) && wheelLock == 1) { state = R.kind == K_WHIP ? "legs locked" : "wheels locked"; c = C_WARN; }
   else if (lastCode == 200) { state = "answering"; c = C_OK; }
   else if (lastCode == 403) { state = "locked (PIN)"; c = C_WARN; }
   else if (lastCode <= 0) { state = "no answer"; c = C_BAD; }
@@ -1585,8 +1676,13 @@ void drawCtrl() {
   const Extra* ex = extrasOf(cur, &n);
   const int ew2 = 80, eh = 30, ey0 = BAR + AVATAR_SIZE + 32;   // 4 rows of 2, then RIFT's
   for (int i = 0; i < n && i < 8; i++) {
-    button(rx + (i % 2) * (ew2 + 6), ey0 + (i / 2) * (eh + 4), ew2, eh, ex[i].label,
-           !strcmp(ex[i].id, "unlock") ? C_WARN : C_ACCENT, String("x:") + ex[i].id);
+    // The lock button says what a tap does: UNLOCK (warning colour) while locked, else LOCK.
+    // WHIP has no room for one, so while he's locked his HELLO is the UNLOCK (locked, he can't wave).
+    const bool locked = wheelLock == 1;
+    const bool lockBtn = !strcmp(ex[i].id, "lockt") || (R.kind == K_WHIP && locked && !strcmp(ex[i].id, "hello"));
+    const char* lbl = lockBtn ? (locked ? "UNLOCK" : "LOCK") : ex[i].label;
+    const uint16_t bc = lockBtn && locked ? C_WARN : C_ACCENT;
+    button(rx + (i % 2) * (ew2 + 6), ey0 + (i / 2) * (eh + 4), ew2, eh, lbl, bc, lockBtn ? String("x:lockt") : String("x:") + ex[i].id);
   }
   if (hubIsRift) button(rx, ey0 + 4 * (eh + 4), 2 * ew2 + 6, eh, "RIFT: ASK / DO", C_DIM, "rift");
 }
@@ -1771,6 +1867,7 @@ void ledTick() {
 }
 
 void draw() {
+  if (saver) { dirty = false; return; }   // the screensaver draws itself (saverLoop)
   btnCount = 0;
   lcd.startWrite();
   lcd.fillScreen(C_BG);
@@ -1804,18 +1901,22 @@ void tankTap(const String& id) {
   if (trackL != oldL || trackR != oldR) { ctlTracks(oldL, oldR); lastBeat = millis(); }
 }
 
+// TALK on HOME, /talkmute, RIFT: she joins the fleet's Brainfuck conversations, or keeps quiet
+void setTalk(bool on) {
+  if (on == talkOn) return;
+  talkOn = on;
+  prefs.begin("rita", false); prefs.putBool("talk", talkOn); prefs.end();
+  say(talkOn ? "TALK on: she chats with the fleet" : "TALK off: she keeps quiet", C_DIM);
+  if (talkOn && talkSound) mirror::chirp(0);   // "hi"
+  dirty = true;
+}
+
 void tap(const String& id) {
   if (id == "back" && screen == SCR_STAT1) { screen = SCR_STATS; statSel = -1; }
   else if (id == "back" && screen == SCR_STATS) { screen = SCR_HOME; lastRefresh = 0; }
   else if (id == "back" && screen == SCR_QR) { screen = SCR_HOME; lastRefresh = 0; }
   else if (id == "qr") { screen = SCR_QR; }
-  else if (id == "talk") {   // she joins the fleet's Brainfuck conversations, or keeps quiet
-    talkOn = !talkOn;
-    prefs.begin("rita", false); prefs.putBool("talk", talkOn); prefs.end();
-    say(talkOn ? "TALK on: she chats with the fleet" : "TALK off: she keeps quiet", C_DIM);
-    lastRegister = 0;        // tell the hub at once (talk:80 on or off)
-    if (talkOn) mirror::chirp(0);   // "hi"
-  }
+  else if (id == "talk") setTalk(!talkOn);   // she joins the fleet's Brainfuck conversations, or keeps quiet
   else if (id == "stats") { screen = SCR_STATS; lastStat = 0; }
   else if (id.startsWith("st:")) { statSel = id.substring(3).toInt(); statPage = 0; statCount = 0; screen = SCR_STAT1; draw(); statPoll(statSel, true); lastStat = millis(); }
   else if (id == "stmore") { statPage++; }
@@ -1892,6 +1993,129 @@ const uint8_t BRIGHT = 200, DIMMED = 22;
 bool dimmed = false;
 unsigned long lastTouchMs = 0;
 
+// ---- The clock, and the screensaver ----
+// The time comes from the internet (NTP) once she's on a network that has it; the time zone from AURA
+// (Open-Meteo knows it for her city), kept in flash, so the clock is right even before AURA answers.
+// Without either she shows what she has: no time is "--:--", and no AURA, no weather.
+long utcOffsetS = 0;
+bool ntpStarted = false;
+String auraBase;
+unsigned long auraAt = 0;
+float outTemp = NAN;
+String outWords;
+
+bool clockNow(struct tm& t) {
+  const time_t now = time(nullptr) + utcOffsetS;
+  t = *gmtime(&now);                 // (gmtime: the PC preview has it too; only the loop calls this)
+  return t.tm_year > 120;            // 2021 on: NTP has answered
+}
+
+void clockLoop() {
+  if (netState != NET_UP || hosting) return;
+  if (!ntpStarted) { configTime(0, 0, "pool.ntp.org", "time.google.com"); ntpStarted = true; }
+  if (auraAt && millis() - auraAt < 10 * 60000UL) return;
+  auraAt = millis();
+  if (!auraBase.length()) {           // AURA, from the hub's list: her "ask:" port
+    HTTPClient http;
+    http.begin(hubUrl() + "/robots");
+    http.setTimeout(1500);
+    if (http.GET() == 200) {
+      JsonDocument doc;
+      if (!deserializeJson(doc, http.getString()))
+        for (JsonObject r : doc["robots"].as<JsonArray>())
+          if (String((const char*)(r["name"] | "")).equalsIgnoreCase("AURA"))
+            for (JsonVariant c : r["capabilities"].as<JsonArray>()) {
+              const String cap = c.as<String>();
+              if (cap.startsWith("ask:")) auraBase = "http://" + String((const char*)(r["ip"] | "")) + ":" + cap.substring(4);
+            }
+    }
+    http.end();
+    if (!auraBase.length()) return;
+  }
+  HTTPClient http;
+  http.begin(auraBase + "/api/now");
+  http.setTimeout(3000);
+  if (http.GET() != 200) { http.end(); auraBase = ""; return; }
+  JsonDocument filter;
+  filter["outside"]["utc_offset_s"] = true;
+  filter["outside"]["temp"] = true;
+  filter["outside"]["words"] = true;
+  JsonDocument doc;
+  const DeserializationError err = deserializeJson(doc, http.getString(), DeserializationOption::Filter(filter));
+  http.end();
+  if (err) return;
+  if (!doc["outside"]["utc_offset_s"].isNull()) {
+    const long off = doc["outside"]["utc_offset_s"];
+    if (off != utcOffsetS) { utcOffsetS = off; prefs.begin("rita", false); prefs.putLong("utc", off); prefs.end(); }
+  }
+  outTemp = doc["outside"]["temp"].isNull() ? NAN : doc["outside"]["temp"].as<float>();
+  outWords = (const char*)(doc["outside"]["words"] | "");
+}
+
+// After SAVER_AFTER_MS without a touch on HOME, FLEET, STATS or the QR code (never while she drives,
+// watches a camera or asks to confirm): the time, the date and the weather outside (AURA's), big, the
+// screen a little dimmer. The first touch only wakes her, like the dimmed screen.
+const unsigned long SAVER_AFTER_MS = 60000;
+const uint8_t SAVER_BRIGHT = 70;
+String saverShown[4];                 // what's on it now: only what changed is drawn again
+
+bool saverAllowed() {
+  return screen == SCR_HOME || screen == SCR_FLEET || screen == SCR_STATS || screen == SCR_STAT1 || screen == SCR_QR;
+}
+
+void saverLine(int i, const String& text, int y, int h, const lgfx::IFont* font, uint8_t size, uint16_t colour) {
+  if (saverShown[i] == text) return;
+  saverShown[i] = text;
+  lcd.fillRect(0, y - h / 2, W, h, C_BG);
+  lcd.setFont(font);
+  lcd.setTextSize(size);
+  lcd.setTextColor(colour, C_BG);
+  lcd.setTextDatum(middle_center);
+  lcd.drawString(text, W / 2, y);
+  lcd.setTextSize(1);
+  lcd.setTextDatum(top_left);
+}
+
+void drawSaver(bool full) {
+  static const char* const DAYS[] = { "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" };
+  static const char* const MONTHS[] = { "January", "February", "March", "April", "May", "June", "July",
+                                        "August", "September", "October", "November", "December" };
+  lcd.startWrite();
+  if (full) {
+    lcd.fillScreen(C_BG);
+    for (auto& s : saverShown) s = "";
+  }
+  struct tm t;
+  const bool ok = clockNow(t);
+  char hm[8], date[40];
+  if (ok) {
+    snprintf(hm, sizeof(hm), "%02d:%02d", t.tm_hour, t.tm_min);
+    snprintf(date, sizeof(date), "%s %d %s", DAYS[t.tm_wday], t.tm_mday, MONTHS[t.tm_mon]);
+  } else {
+    strcpy(hm, "--:--");
+    strcpy(date, netState == NET_UP && !hosting ? "asking the internet for the time" : "no time without the internet");
+  }
+  saverLine(0, hm, 92, 112, &fonts::Font7, 2, C_ACCENT);
+  saverLine(1, date, 172, 30, &fonts::Font4, 1, C_TEXT);
+  saverLine(2, isnan(outTemp) ? String("") : String(outTemp, 1) + " C outside", 236, 56, &fonts::Font4, 2, C_TEXT);
+  saverLine(3, outWords, 292, 22, &fonts::Font2, 1, C_DIM);   // AURA's words for the sky ("partly cloudy")
+  lcd.endWrite();
+}
+
+void saverLoop() {
+  static unsigned long drawnAt = 0;
+  if (!saver) {
+    if (saverAllowed() && millis() - lastTouchMs > SAVER_AFTER_MS) {
+      saver = true;
+      lcd.setBrightness(SAVER_BRIGHT);
+      drawSaver(true);
+      drawnAt = millis();
+    }
+    return;
+  }
+  if (millis() - drawnAt >= 1000) { drawSaver(false); drawnAt = millis(); }
+}
+
 void touchLoop() {
   static bool wasDown = false, waking = false;
   static unsigned long lastDown = 0;
@@ -1899,6 +2123,10 @@ void touchLoop() {
   bool down = lcd.getTouch(&x, &y);
   const bool watching = screen == SCR_CTRL && cur >= 0 && (camView || ROSTER[cur].kind == K_DREAM);
   if (down) lastTouchMs = millis();
+  if (saver) {                         // the screensaver: a touch only wakes her
+    if (down) { saver = false; dimmed = false; lcd.setBrightness(BRIGHT); waking = true; dirty = true; }
+    return;
+  }
   if (!dimmed && !watching && millis() - lastTouchMs > DIM_AFTER_MS) { lcd.setBrightness(DIMMED); dimmed = true; }
   if (down && dimmed) { lcd.setBrightness(BRIGHT); dimmed = false; waking = true; }   // this touch only wakes her
   if (waking) {
@@ -1989,7 +2217,7 @@ void setup() {
   calibrate(lcd.getTouch(&x, &y));   // held at boot: calibrate again
   mirror::begin();                    // an SD card with DREAM's clips, if there is one
   mirror::voiceBegin();               // her voice on the speaker connector
-  prefs.begin("rita", true); mirror::sound = prefs.getBool("sound", true); talkOn = prefs.getBool("talk", true); prefs.end();
+  prefs.begin("rita", true); mirror::sound = prefs.getBool("sound", true); talkOn = prefs.getBool("talk", true); talkSound = prefs.getBool("talksnd", true); utcOffsetS = prefs.getLong("utc", 0); prefs.end();
 
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);
@@ -2012,6 +2240,8 @@ void loop() {
   }
   nearLoop();
   touchLoop();
+  clockLoop();
+  saverLoop();
 
   // HOME and FLEET: who's on the network; RIFT's ROBOT screen: what it says. DRIVE talks to its
   // robot itself (ctlLoop), so the fleet list isn't fetched while you drive.
@@ -2019,6 +2249,18 @@ void loop() {
     lastRefresh = millis();
     if (screen == SCR_HOME || screen == SCR_FLEET || screen == SCR_STATS) fetchFleet();
     else askRobot();
+  }
+  // DRIVE with no address yet (she was picked before the hub listed her, e.g. just rebooted):
+  // keep asking the hub, and go in the moment she turns up
+  static unsigned long lastFind = 0;
+  if (netState == NET_UP && screen == SCR_CTRL && cur >= 0 && ROSTER[cur].kind != K_ARM && !curBase.length()
+      && millis() - lastFind > REFRESH_MS) {
+    lastFind = millis();
+    fetchFleet();
+    if (robotIp(cur).length()) {
+      ctlEnter(cur);
+      if (curBase.length()) { say(String(ROSTER[cur].label) + " found", C_OK); dirty = true; }
+    }
   }
   static String shownSig;
   static unsigned long lastSigCheck = 0;
